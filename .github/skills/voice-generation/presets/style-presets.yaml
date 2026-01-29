@@ -1,0 +1,436 @@
+# ACE-Step Style Presets
+# Complete style configurations with reference songs for each genre
+
+presets:
+  # ============================================================================
+  # POP ANTHEM - Inspirational, uplifting, stadium-ready
+  # ============================================================================
+  pop_anthem:
+    prompt: "pop, inspirational, upbeat, electronic, anthemic, motivational, synth, drums"
+    vocal:
+      gender: female
+      style: singing
+      range: high
+      emotion: empowering
+    instrumentation: [synth, drums, bass, piano, strings]
+    mood:
+      primary: triumphant
+      secondary: hopeful
+      energy: high
+    tempo: upbeat
+    reference_songs:
+      - artist: "Katy Perry"
+        title: "Roar"
+        style_elements: [empowering lyrics, anthemic chorus, building dynamics]
+      - artist: "Rachel Platten"
+        title: "Fight Song"
+        style_elements: [motivational theme, powerful vocals, emotional build]
+      - artist: "Kelly Clarkson"
+        title: "Stronger"
+        style_elements: [resilience theme, catchy hook, driving beat]
+    lyrics_guidance: |
+      - Use empowering, action-oriented language
+      - Chorus should be singable and memorable
+      - Build from verse to explosive chorus
+      - Include call-to-action phrases: "rise", "stand", "fight", "shine"
+
+  # ============================================================================
+  # ROCK BALLAD - Emotional, powerful, guitar-driven
+  # ============================================================================
+  rock_ballad:
+    prompt: "rock, ballad, emotional, powerful, guitar, drums, male vocal, anthemic"
+    vocal:
+      gender: male
+      style: singing
+      range: full
+      emotion: passionate
+    instrumentation: [electric guitar, acoustic guitar, drums, bass, piano]
+    mood:
+      primary: emotional
+      secondary: powerful
+      energy: building
+    tempo: mid-tempo
+    reference_songs:
+      - artist: "Bon Jovi"
+        title: "Livin' on a Prayer"
+        style_elements: [anthemic chorus, working class theme, building dynamics]
+      - artist: "Journey"
+        title: "Don't Stop Believin'"
+        style_elements: [hopeful message, iconic piano intro, soaring vocals]
+      - artist: "Guns N' Roses"
+        title: "November Rain"
+        style_elements: [epic length, emotional dynamics, guitar solos]
+    lyrics_guidance: |
+      - Tell a story with emotional stakes
+      - Verse = personal struggle, Chorus = universal message
+      - Use concrete imagery: roads, hearts, storms, fire
+      - Build emotional intensity verse to verse
+
+  # ============================================================================
+  # ELECTRONIC DANCE - High energy, festival-ready
+  # ============================================================================
+  electronic_dance:
+    prompt: "EDM, electronic, dance, synth, bass drop, festival, energetic, female vocal"
+    vocal:
+      gender: female
+      style: singing
+      range: high
+      emotion: euphoric
+    instrumentation: [synth, bass, kick, hi-hat, pad, lead]
+    mood:
+      primary: euphoric
+      secondary: hypnotic
+      energy: high
+    tempo: fast
+    reference_songs:
+      - artist: "Calvin Harris ft. Ellie Goulding"
+        title: "I Need Your Love"
+        style_elements: [catchy vocal hook, building drops, festival energy]
+      - artist: "Avicii"
+        title: "Wake Me Up"
+        style_elements: [acoustic elements, uplifting message, folk-EDM blend]
+      - artist: "Martin Garrix"
+        title: "Animals"
+        style_elements: [massive drops, minimal vocals, festival anthem]
+    lyrics_guidance: |
+      - Keep lyrics simple and repetitive for singalong
+      - Focus on feelings: love, freedom, night, dancing
+      - Short phrases that work with drops
+      - Verse can be sparse, chorus must be memorable
+
+  # ============================================================================
+  # ACOUSTIC FOLK - Intimate, storytelling, organic
+  # ============================================================================
+  acoustic_folk:
+    prompt: "acoustic, folk, gentle, guitar, warm, intimate, storytelling, natural"
+    vocal:
+      gender: female
+      style: singing
+      range: mid
+      emotion: tender
+    instrumentation: [acoustic guitar, light percussion, violin, cello]
+    mood:
+      primary: intimate
+      secondary: nostalgic
+      energy: low
+    tempo: slow
+    reference_songs:
+      - artist: "Iron & Wine"
+        title: "Flightless Bird, American Mouth"
+        style_elements: [poetic lyrics, fingerpicking guitar, intimate production]
+      - artist: "Fleet Foxes"
+        title: "White Winter Hymnal"
+        style_elements: [harmonies, nature imagery, ethereal feel]
+      - artist: "Bon Iver"
+        title: "Skinny Love"
+        style_elements: [raw emotion, sparse arrangement, falsetto vocals]
+    lyrics_guidance: |
+      - Use poetic, imagery-rich language
+      - Nature metaphors: rivers, seasons, forests, sky
+      - Tell personal stories with universal themes
+      - Less is more - leave space for interpretation
+
+  # ============================================================================
+  # HIP HOP TRAP - Modern beats, hard-hitting
+  # ============================================================================
+  hip_hop_trap:
+    prompt: "hip-hop, trap, 808, bass, hi-hat, male rap, aggressive, modern"
+    vocal:
+      gender: male
+      style: rap
+      range: mid
+      emotion: aggressive
+    instrumentation: [808 bass, hi-hat, snare, synth pad, ad-libs]
+    mood:
+      primary: confident
+      secondary: aggressive
+      energy: high
+    tempo: mid-tempo
+    reference_songs:
+      - artist: "Travis Scott"
+        title: "SICKO MODE"
+        style_elements: [beat switches, ad-libs, atmospheric production]
+      - artist: "Drake"
+        title: "God's Plan"
+        style_elements: [melodic rap, catchy hook, flex lyrics]
+      - artist: "Kendrick Lamar"
+        title: "HUMBLE"
+        style_elements: [hard-hitting beat, confident bars, iconic hook]
+    lyrics_guidance: |
+      - Strong rhythmic flow with internal rhymes
+      - Confident, boastful themes
+      - Short, punchy phrases
+      - Include ad-libs in parentheses: (yeah), (uh), (skrt)
+      - Repetitive hook for memorability
+
+  # ============================================================================
+  # INDIE DREAMY - Atmospheric, ethereal, alternative
+  # ============================================================================
+  indie_dreamy:
+    prompt: "indie, alternative, dreamy, atmospheric, reverb, guitar, ethereal, female vocal"
+    vocal:
+      gender: female
+      style: singing
+      range: mid
+      emotion: melancholic
+    instrumentation: [reverb guitar, synth pad, drums, bass, ambient sounds]
+    mood:
+      primary: dreamy
+      secondary: melancholic
+      energy: medium
+    tempo: mid-tempo
+    reference_songs:
+      - artist: "Beach House"
+        title: "Space Song"
+        style_elements: [dreamy reverb, ethereal vocals, shoegaze elements]
+      - artist: "Tame Impala"
+        title: "The Less I Know The Better"
+        style_elements: [psychedelic, funky bass, catchy melody]
+      - artist: "Lana Del Rey"
+        title: "Summertime Sadness"
+        style_elements: [nostalgic mood, cinematic production, emotional depth]
+    lyrics_guidance: |
+      - Abstract, poetic imagery
+      - Themes of longing, memory, dreams
+      - Atmospheric descriptions: haze, light, distance
+      - Repetition for hypnotic effect
+
+  # ============================================================================
+  # PUNK ROCK - Fast, raw, rebellious
+  # ============================================================================
+  punk_rock:
+    prompt: "punk, rock, fast, raw, aggressive, guitar, drums, rebellious, male vocal"
+    vocal:
+      gender: male
+      style: singing
+      range: mid
+      emotion: angry
+    instrumentation: [distorted guitar, fast drums, bass, power chords]
+    mood:
+      primary: rebellious
+      secondary: energetic
+      energy: high
+    tempo: fast
+    reference_songs:
+      - artist: "Green Day"
+        title: "Basket Case"
+        style_elements: [fast tempo, relatable anxiety, catchy hooks]
+      - artist: "Blink-182"
+        title: "All The Small Things"
+        style_elements: [pop-punk melody, fun energy, simple structure]
+      - artist: "The Offspring"
+        title: "The Kids Aren't Alright"
+        style_elements: [social commentary, driving rhythm, memorable riff]
+    lyrics_guidance: |
+      - Direct, confrontational language
+      - Anti-authority themes
+      - Short, punchy lines
+      - Singalong choruses
+      - Personal frustrations made universal
+
+  # ============================================================================
+  # R&B SOUL - Smooth, groove-based, emotional
+  # ============================================================================
+  r_and_b_soul:
+    prompt: "r&b, soul, smooth, groove, bass, keys, emotional, female vocal, sensual"
+    vocal:
+      gender: female
+      style: singing
+      range: full
+      emotion: sensual
+    instrumentation: [electric piano, bass, drums, synth, strings]
+    mood:
+      primary: sensual
+      secondary: emotional
+      energy: medium
+    tempo: mid-tempo
+    reference_songs:
+      - artist: "SZA"
+        title: "Good Days"
+        style_elements: [vulnerable lyrics, modern production, vocal runs]
+      - artist: "Frank Ocean"
+        title: "Thinkin Bout You"
+        style_elements: [falsetto, minimalist production, emotional depth]
+      - artist: "Beyoncé"
+        title: "Drunk in Love"
+        style_elements: [sensual groove, powerful vocals, trap-influenced]
+    lyrics_guidance: |
+      - Intimate, personal themes
+      - Love, desire, heartbreak
+      - Smooth flowing phrases
+      - Melismatic opportunities (vocal runs)
+      - Emotional vulnerability
+
+  # ============================================================================
+  # COUNTRY - Storytelling, twang, heartfelt
+  # ============================================================================
+  country:
+    prompt: "country, acoustic guitar, storytelling, twang, heartfelt, male vocal, fiddle"
+    vocal:
+      gender: male
+      style: singing
+      range: mid
+      emotion: genuine
+    instrumentation: [acoustic guitar, fiddle, steel guitar, bass, drums]
+    mood:
+      primary: nostalgic
+      secondary: genuine
+      energy: medium
+    tempo: mid-tempo
+    reference_songs:
+      - artist: "Johnny Cash"
+        title: "Hurt"
+        style_elements: [raw emotion, sparse arrangement, powerful storytelling]
+      - artist: "Chris Stapleton"
+        title: "Tennessee Whiskey"
+        style_elements: [soulful delivery, blues influence, timeless feel]
+      - artist: "Luke Combs"
+        title: "Beautiful Crazy"
+        style_elements: [romantic theme, modern production, relatable lyrics]
+    lyrics_guidance: |
+      - Narrative storytelling structure
+      - Concrete imagery: trucks, bars, small towns, love
+      - Authentic, conversational language
+      - Themes: love, loss, home, family, redemption
+      - Twang-friendly vowel sounds
+
+  # ============================================================================
+  # JAZZ LOUNGE - Sophisticated, smooth, nocturnal
+  # ============================================================================
+  jazz_lounge:
+    prompt: "jazz, lounge, smooth, piano, saxophone, sophisticated, nocturnal, female vocal"
+    vocal:
+      gender: female
+      style: singing
+      range: mid
+      emotion: sophisticated
+    instrumentation: [piano, upright bass, drums, saxophone, muted trumpet]
+    mood:
+      primary: sophisticated
+      secondary: romantic
+      energy: low
+    tempo: slow
+    reference_songs:
+      - artist: "Norah Jones"
+        title: "Don't Know Why"
+        style_elements: [intimate piano, breathy vocals, late-night mood]
+      - artist: "Amy Winehouse"
+        title: "Back to Black"
+        style_elements: [retro soul, emotional depth, jazz-influenced]
+      - artist: "Diana Krall"
+        title: "The Look of Love"
+        style_elements: [classic jazz, sophisticated arrangement, sultry vocals]
+    lyrics_guidance: |
+      - Sophisticated, poetic language
+      - Romantic or melancholic themes
+      - City nightlife imagery: smoke, lights, rain, bars
+      - Subtle, understated emotion
+      - Leave room for instrumental moments
+
+  # ============================================================================
+  # FRONTEND POP - Product/UX themed pop for apps and interfaces
+  # ============================================================================
+  frontend_pop:
+    prompt: "pop, electronic, upbeat, synth, drums, catchy, female vocal, product launch, tech"
+    vocal:
+      gender: female
+      style: singing
+      range: high
+      emotion: joyful
+    instrumentation: [synth, drums, bass, claps, plucks]
+    mood:
+      primary: energetic
+      secondary: optimistic
+      energy: high
+    tempo: upbeat
+    reference_songs:
+      - artist: "Carly Rae Jepsen"
+        title: "Call Me Maybe"
+        style_elements: [playful tone, bright synths, infectious hook]
+      - artist: "Dua Lipa"
+        title: "Levitating"
+        style_elements: [retro-pop groove, confident vocals, product-jingle-ready energy]
+    lyrics_guidance: |
+      - Focus on user experience themes: buttons, clicks, smooth flows, delight
+      - Make references to interfaces: screens, dashboards, timelines
+      - Use playful language suitable for product promos or feature launches
+      - Keep choruses short, memorable, and hook-driven
+
+# ============================================================================
+# LYRICS STRUCTURE TEMPLATES
+# ============================================================================
+lyrics_templates:
+  standard_song:
+    structure: "[intro-short]\n\n[verse]\n{verse1}\n\n[chorus]\n{chorus}\n\n[verse]\n{verse2}\n\n[chorus]\n{chorus}\n\n[outro-short]"
+    duration: 60
+    
+  extended_song:
+    structure: "[intro-medium]\n\n[verse]\n{verse1}\n\n[chorus]\n{chorus}\n\n[verse]\n{verse2}\n\n[bridge]\n{bridge}\n\n[chorus]\n{chorus}\n\n[outro-medium]"
+    duration: 120
+    
+  short_song:
+    structure: "[intro-short]\n\n[verse]\n{verse1}\n\n[chorus]\n{chorus}\n\n[outro-short]"
+    duration: 30
+
+  anthem:
+    structure: "[intro-short]\n\n[verse]\n{verse1}\n\n[chorus]\n{chorus}\n\n[verse]\n{verse2}\n\n[chorus]\n{chorus}\n\n[bridge]\n{bridge}\n\n[chorus]\n{chorus}\n\n[chorus]\n{final_chorus}\n\n[outro-short]"
+    duration: 180
+
+# ============================================================================
+# STRUCTURE TAG DEFINITIONS
+# ============================================================================
+structure_tags:
+  intro-short:
+    description: "Short instrumental intro (4-8 bars)"
+    has_vocals: false
+    typical_duration: "5-10 seconds"
+    
+  intro-medium:
+    description: "Medium instrumental intro (8-16 bars)"
+    has_vocals: false
+    typical_duration: "10-20 seconds"
+    
+  verse:
+    description: "Verse section with lyrics - storytelling, setup"
+    has_vocals: true
+    typical_duration: "15-30 seconds"
+    lyrics_guidelines:
+      - "4-8 lines per verse"
+      - "Establish story, character, or situation"
+      - "Build toward chorus"
+      - "Can use different lyrics each verse"
+    
+  chorus:
+    description: "Chorus section - main hook, memorable lyrics"
+    has_vocals: true
+    typical_duration: "15-30 seconds"
+    lyrics_guidelines:
+      - "4-6 lines, highly repetitive"
+      - "Contains the main message/hook"
+      - "Most memorable part of the song"
+      - "Usually same lyrics each time"
+    
+  bridge:
+    description: "Bridge section - contrast, new perspective"
+    has_vocals: true
+    typical_duration: "10-20 seconds"
+    lyrics_guidelines:
+      - "2-4 lines"
+      - "Different melody/perspective"
+      - "Emotional peak or twist"
+      - "Leads back into final chorus"
+    
+  inst-short:
+    description: "Short instrumental break"
+    has_vocals: false
+    typical_duration: "5-10 seconds"
+    
+  outro-short:
+    description: "Short outro/ending"
+    has_vocals: false
+    typical_duration: "5-10 seconds"
+    
+  outro-medium:
+    description: "Medium outro with fade or resolution"
+    has_vocals: false
+    typical_duration: "10-20 seconds"

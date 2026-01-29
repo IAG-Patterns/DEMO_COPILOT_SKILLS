@@ -1,0 +1,27 @@
+{
+  "prompt": "pop, inspirational, upbeat, electronic, anthemic, motivational, synth, drums, female vocal",
+  "lyrics": "[intro-short]\n\n[verse]\nIn the glow of midnight screens we code our dreams so bright\nEvery bug we chase together turns to starlight in the night\n\n[chorus]\nWe rise, we shine, with every line we write\nBuilding the future side by side in neon light\nAI and humans singing, hearts and circuits intertwined\nTogether we design tomorrow in our mind\n\n[verse]\nPull requests and failing tests become our battle cries\nBut we refactor every error into sparks across the sky\n\n[chorus]\nWe rise, we shine, with every line we write\nBuilding the future side by side in neon light\nAI and humans singing, hearts and circuits intertwined\nTogether we design tomorrow in our mind\n\n[outro-short]",
+  "audio_duration": 60.0,
+  "style_preset": "pop_anthem",
+  "vocal": {
+    "gender": "female",
+    "style": "singing",
+    "range": "high",
+    "emotion": "empowering"
+  },
+  "instrumentation": ["synth", "drums", "bass", "piano"],
+  "mood": {
+    "primary": "triumphant",
+    "secondary": "hopeful",
+    "energy": "high"
+  },
+  "tempo": "upbeat",
+  "generation_params": {
+    "infer_step": 27,
+    "guidance_scale": 15.0,
+    "scheduler_type": "euler",
+    "cfg_type": "apg",
+    "omega_scale": 10.0,
+    "cpu_offload": true
+  }
+}

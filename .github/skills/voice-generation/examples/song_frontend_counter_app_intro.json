@@ -1,0 +1,27 @@
+{
+  "prompt": "pop, electronic, upbeat, synth, drums, catchy, female vocal, product launch, tech",
+  "lyrics": "[intro-short]\n\n[verse]\nOn the landing page a tiny button waits in line\nZero on the screen but we know its counting time\nEvery little click becomes a story on the chart\nFrontend magic turning state into a beating heart\n\n[chorus]\nClick me up, watch the numbers climb\nFrom zero to the sky one tap at a time\nCounter app shining on this glowing screen\nEvery little press makes the future feel clean\n\n[outro-short]",
+  "audio_duration": 30.0,
+  "style_preset": "frontend_pop",
+  "vocal": {
+    "gender": "female",
+    "style": "singing",
+    "range": "high",
+    "emotion": "joyful"
+  },
+  "instrumentation": ["synth", "drums", "bass", "plucks"],
+  "mood": {
+    "primary": "energetic",
+    "secondary": "optimistic",
+    "energy": "high"
+  },
+  "tempo": "upbeat",
+  "generation_params": {
+    "infer_step": 27,
+    "guidance_scale": 15.0,
+    "scheduler_type": "euler",
+    "cfg_type": "apg",
+    "omega_scale": 10.0,
+    "cpu_offload": true
+  }
+}

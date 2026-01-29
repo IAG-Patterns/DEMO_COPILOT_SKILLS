@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "song-generation.schema.json",
+  "title": "ACE-Step Song Generation Configuration",
+  "description": "Complete schema for generating songs with ACE-Step, including style, lyrics, and generation parameters",
+  "type": "object",
+  "required": ["prompt", "lyrics", "audio_duration"],
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "Style prompt describing genre, mood, instrumentation, and vocal type. Comma-separated tags.",
+      "examples": [
+        "pop, upbeat, electronic, female vocal, synth, drums",
+        "rock, anthemic, powerful, male vocal, guitar, drums, emotional",
+        "hip-hop, trap, bass, 808, male rap, aggressive",
+        "acoustic, folk, gentle, guitar, warm, intimate, female vocal"
+      ]
+    },
+    "lyrics": {
+      "type": "string",
+      "description": "Song lyrics with structure tags. Must include [verse], [chorus], and optionally [intro-short], [bridge], [outro-short]",
+      "pattern": "\\[(intro-short|intro-medium|verse|chorus|bridge|inst-short|outro-short|outro-medium)\\]"
+    },
+    "audio_duration": {
+      "type": "number",
+      "description": "Duration of the generated audio in seconds",
+      "minimum": 15,
+      "maximum": 300,
+      "default": 60
+    },
+    "style_preset": {
+      "type": "string",
+      "description": "Predefined style preset name (maps to prompt + recommended parameters)",
+      "enum": [
+        "pop_anthem",
+        "rock_ballad", 
+        "electronic_dance",
+        "acoustic_folk",
+        "hip_hop_trap",
+        "indie_dreamy",
+        "punk_rock",
+        "r_and_b_soul",
+        "country",
+        "jazz_lounge",
+        "frontend_pop"
+      ]
+    },
+    "reference_songs": {
+      "type": "array",
+      "description": "List of reference songs that inspire the style (for context, not actual audio)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "artist": { "type": "string" },
+          "title": { "type": "string" },
+          "style_elements": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What elements to draw from this reference"
+          }
+        }
+      }
+    },
+    "vocal": {
+      "type": "object",
+      "description": "Vocal characteristics",
+      "properties": {
+        "gender": { "type": "string", "enum": ["male", "female", "mixed"] },
+        "style": { "type": "string", "enum": ["singing", "rap", "spoken_word", "harmonized"] },
+        "range": { "type": "string", "enum": ["low", "mid", "high", "full"] },
+        "emotion": { "type": "string", "description": "Emotional quality: passionate, gentle, aggressive, melancholic, joyful" }
+      }
+    },
+    "instrumentation": {
+      "type": "array",
+      "description": "List of instruments/sounds to include",
+      "items": { "type": "string" },
+      "examples": [
+        ["guitar", "drums", "bass", "synth"],
+        ["piano", "strings", "drums"],
+        ["808", "hi-hat", "synth bass", "pad"]
+      ]
+    },
+    "mood": {
+      "type": "object",
+      "properties": {
+        "primary": { "type": "string", "description": "Main emotional mood" },
+        "secondary": { "type": "string", "description": "Secondary emotional layer" },
+        "energy": { "type": "string", "enum": ["low", "medium", "high", "building"] }
+      }
+    },
+    "tempo": {
+      "type": "string",
+      "enum": ["slow", "mid-tempo", "upbeat", "fast"],
+      "description": "Approximate tempo feel"
+    },
+    "generation_params": {
+      "type": "object",
+      "description": "ACE-Step generation parameters (advanced)",
+      "properties": {
+        "infer_step": {
+          "type": "integer",
+          "default": 27,
+          "description": "Inference steps. 27=fast, 60=high quality"
+        },
+        "guidance_scale": {
+          "type": "number",
+          "default": 15.0,
+          "description": "CFG guidance scale (higher = more prompt adherence)"
+        },
+        "scheduler_type": {
+          "type": "string",
+          "default": "euler",
+          "enum": ["euler", "heun"]
+        },
+        "cfg_type": {
+          "type": "string", 
+          "default": "apg",
+          "enum": ["apg", "cfg"]
+        },
+        "omega_scale": {
+          "type": "number",
+          "default": 10.0
+        },
+        "cpu_offload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable CPU offloading for GPUs < 12GB VRAM"
+        }
+      }
+    }
+  }
+}

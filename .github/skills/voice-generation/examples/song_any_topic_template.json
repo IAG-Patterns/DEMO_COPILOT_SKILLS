@@ -1,0 +1,27 @@
+{
+  "prompt": "pop, inspirational, upbeat, electronic, anthemic, synth, drums, female vocal",
+  "lyrics": "[intro-short]\n\n[verse]\nThis song is about YOUR_TOPIC_HERE, painted bright in every line.\nTell a little story that makes this moment shine.\n\n[chorus]\nSing out loud about YOUR_TOPIC_HERE tonight,\nTurn it into rhythm, melody, and light.\n\n[outro-short]",
+  "audio_duration": 45.0,
+  "style_preset": "pop_anthem",
+  "vocal": {
+    "gender": "female",
+    "style": "singing",
+    "range": "high",
+    "emotion": "empowering"
+  },
+  "instrumentation": ["synth", "drums", "bass", "piano"],
+  "mood": {
+    "primary": "triumphant",
+    "secondary": "hopeful",
+    "energy": "high"
+  },
+  "tempo": "upbeat",
+  "generation_params": {
+    "infer_step": 27,
+    "guidance_scale": 15.0,
+    "scheduler_type": "euler",
+    "cfg_type": "apg",
+    "omega_scale": 10.0,
+    "cpu_offload": true
+  }
+}

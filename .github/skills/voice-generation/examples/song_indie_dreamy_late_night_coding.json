@@ -1,0 +1,27 @@
+{
+  "prompt": "indie, alternative, dreamy, atmospheric, reverb, guitar, ethereal, female vocal",
+  "lyrics": "[intro-short]\n\n[verse]\nKeys glow soft in the quiet of the night\nCoffee rings stain every little insight\nStack traces hanging like constellations high\nWe chase down bugs beneath a pixel sky\n\n[chorus]\nLate-night coding in a neon haze\nLooping through our thoughts in endless arrays\nEvery small commit a star we align\nShipping out our dreams one branch at a time\n\n[outro-short]",
+  "audio_duration": 45.0,
+  "style_preset": "indie_dreamy",
+  "vocal": {
+    "gender": "female",
+    "style": "singing",
+    "range": "mid",
+    "emotion": "melancholic"
+  },
+  "instrumentation": ["reverb guitar", "synth pad", "bass"],
+  "mood": {
+    "primary": "dreamy",
+    "secondary": "melancholic",
+    "energy": "medium"
+  },
+  "tempo": "mid-tempo",
+  "generation_params": {
+    "infer_step": 27,
+    "guidance_scale": 15.0,
+    "scheduler_type": "euler",
+    "cfg_type": "apg",
+    "omega_scale": 10.0,
+    "cpu_offload": true
+  }
+}

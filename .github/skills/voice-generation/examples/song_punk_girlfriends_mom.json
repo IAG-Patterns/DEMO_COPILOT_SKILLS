@@ -1,0 +1,27 @@
+{
+  "prompt": "punk, rock, fast, raw, aggressive, guitar, drums, rebellious, male vocal",
+  "lyrics": "[intro-short]\n\n[verse]\nMy girlfriend's mom is watching every move I make\nFrom my worn-out jacket to the chords I play\nShe says I'm just a phase that her daughter will outgrow\nBut in this basement band is the only home I know\n\n[chorus]\nYeah, she hates my songs and my ripped-up jeans\nSays I'll never be more than broken dreams\nBut when we plug in and the crowd screams loud\nWe turn her judgement into feedback sound\n\n[outro-short]",
+  "audio_duration": 30.0,
+  "style_preset": "punk_rock",
+  "vocal": {
+    "gender": "male",
+    "style": "singing",
+    "range": "mid",
+    "emotion": "angry"
+  },
+  "instrumentation": ["distorted guitar", "bass", "drums"],
+  "mood": {
+    "primary": "rebellious",
+    "secondary": "energetic",
+    "energy": "high"
+  },
+  "tempo": "fast",
+  "generation_params": {
+    "infer_step": 27,
+    "guidance_scale": 15.0,
+    "scheduler_type": "euler",
+    "cfg_type": "apg",
+    "omega_scale": 10.0,
+    "cpu_offload": true
+  }
+}
