@@ -375,7 +375,11 @@ jobs:
 
             Also create a file `REFACTOR_SUMMARY.md` with details of all changes made.
           
-          claude_args: '--dangerously-skip-permissions --settings .claude-config/settings.json --allowed-tools Bash,Edit,Read,Write,LS,Glob,Grep'
+          claude_args: |
+            --dangerously-skip-permissions
+            --settings .claude-config/settings.json
+            --allowedTools "Bash" "Edit" "Read" "Write" "LS" "Glob" "Grep"
+            --max-turns 50
 
       - name: Save Claude Agent Summary
         if: always()

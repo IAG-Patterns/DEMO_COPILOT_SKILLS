@@ -267,7 +267,10 @@ jobs:
             ## Output
             Print JSON summary: {"applied_tasks": n, "skipped_tasks": n, "tests_passed": bool}
           
-          claude_args: '--dangerously-skip-permissions --allowed-tools Bash,Edit,Read,Write,LS,Glob,Grep'
+          claude_args: |
+            --dangerously-skip-permissions
+            --allowedTools "Bash" "Edit" "Read" "Write" "LS" "Glob" "Grep"
+            --max-turns 50
 
       - name: Commit and Push
         env:

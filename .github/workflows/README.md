@@ -1,10 +1,33 @@
-# Claude Code Automation Workflows
+# AI Autofix Workflows (Claude & Warp)
 
-This directory contains GitHub Actions workflows that use Claude Code to automate code review fixes and security vulnerability remediation.
+This directory contains GitHub Actions workflows that use AI agents (Claude Code or Warp) to automate code review fixes and security vulnerability remediation.
 
 ## Workflows
 
-### 1. `claude-pr-refactor.yml` - PR Comment Autofix
+### 1. `ai-autofix.yml` - Unified AI Autofix (Recommended)
+
+**The main workflow** that allows you to choose between Claude and Warp AI agents.
+
+**Trigger**: Manual (`workflow_dispatch`)
+
+**Usage**:
+1. Go to Actions → "AI Autofix (PR Comments & Vulnerabilities)"
+2. Click "Run workflow"
+3. Configure:
+   - `pr_url`: PR URL (e.g., `https://github.com/owner/repo/pull/123`)
+   - `ai_provider`: **claude** or **warp**
+   - `fix_pr_comments`: Toggle PR comment fixes
+   - `fix_vulnerabilities`: Toggle vulnerability fixes
+4. Click "Run workflow"
+
+**Required Secrets**:
+- `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` - For Claude (pick one)
+- `WARP_API_KEY` - For Warp
+- `PERSONAL_ACCESS_TOKEN` - GitHub PAT (recommended)
+
+---
+
+### 2. `claude-pr-refactor.yml` - PR Comment Autofix (Claude Only)
 
 Automatically applies code changes based on PR review comments.
 
@@ -91,10 +114,14 @@ Go to Settings → Secrets and variables → Actions → New repository secret
 
 | Secret | Required | Description |
 |--------|----------|-------------|
-| `CLAUDE_CODE_OAUTH_TOKEN` | Yes | Get from [Claude Code](https://console.anthropic.com/) |
+| `ANTHROPIC_API_KEY` | For Claude | Anthropic API key from [console.anthropic.com](https://console.anthropic.com/) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | For Claude | Alternative: OAuth token (either this OR `ANTHROPIC_API_KEY`) |
+| `WARP_API_KEY` | For Warp | Warp AI API key |
 | `PERSONAL_ACCESS_TOKEN` | Recommended | GitHub PAT with `repo`, `pull_request` scopes |
 | `SNYK_TOKEN` | Optional | For Snyk vulnerability scanning |
-| `ANTHROPIC_API_KEY` | Optional | Alternative to OAuth token |
+
+> **Note**: For Claude authentication, you need **either** `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, not both.
+> The OAuth token is obtained via Claude Code's `/install-github-app` command.
 
 ### 2. Enable Workflows
 
