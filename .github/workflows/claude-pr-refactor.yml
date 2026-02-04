@@ -308,24 +308,10 @@ jobs:
             snyk_scan.log
           retention-days: 30
 
-      - name: Prepare Refactor Branch
-        env:
-          PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
+      - name: Configure Git
         run: |
-          echo "Preparing dedicated refactor branch for PR #$PR_NUMBER..."
-          
-          BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
-          
           git config user.name "claude-code-agent"
           git config user.email "claude-agent@anthropic.com"
-          
-          if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
-            echo "Local branch $BRANCH_NAME already exists; checking it out."
-            git switch "$BRANCH_NAME"
-          else
-            echo "Creating and switching to $BRANCH_NAME from current HEAD."
-            git switch -c "$BRANCH_NAME"
-          fi
 
       - name: Run Claude Code Agent
         id: claude_agent
@@ -399,7 +385,7 @@ jobs:
             REFACTOR_SUMMARY.md
           retention-days: 30
 
-      - name: Commit and Push Refactors
+      - name: Commit and Push to Original PR
         env:
           PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
           OWNER: ${{ steps.parse_pr.outputs.owner }}
@@ -409,47 +395,26 @@ jobs:
         run: |
           echo "Checking for Claude-applied changes to commit..."
           
-          BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
-          
           # Remove generated files before checking for changes
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
           rm -f conversation_comments.json review_comments.json reviews.json
           rm -rf .claude-config CLAUDE.md
           
           if [ -z "$(git status --porcelain)" ]; then
-            echo "No changes detected from Claude agent; skipping commit and PR creation."
+            echo "No changes detected from Claude agent; skipping commit."
             exit 0
           fi
           
           git add -A
-          git commit -m "Claude AI refactors for PR #$PR_NUMBER
+          git commit -m "Claude AI: Apply review feedback for PR #$PR_NUMBER
 
           Applied code review feedback using Claude Code Agent.
           See REFACTOR_SUMMARY.md for details."
           
-          echo "Pushing branch $BRANCH_NAME..."
-          # Push using token in URL to avoid credential issues
-          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME --force
+          echo "Pushing directly to original PR branch: $HEAD_REF"
+          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$HEAD_REF
           
-          echo "Creating follow-up PR..."
-          ORIGINAL_PR_URL="https://github.com/$OWNER/$REPO/pull/$PR_NUMBER"
-          
-          gh pr create \
-            --repo "$OWNER/$REPO" \
-            --base "$HEAD_REF" \
-            --head "$BRANCH_NAME" \
-            --title "Claude AI refactors for PR #$PR_NUMBER" \
-            --body "## Automated Refactoring
-
-          This PR was generated automatically by the Claude Code Agent to address review comments on $ORIGINAL_PR_URL.
-
-          ### Changes Applied
-          See \`REFACTOR_SUMMARY.md\` for a detailed list of changes.
-
-          ### Review
-          Please review these changes before merging into the original PR branch." || echo "PR may already exist"
-          
-          echo "Successfully created follow-up PR with Claude refactors."
+          echo "Successfully pushed Claude refactors to PR #$PR_NUMBER"
 
       - name: Post Summary Comment
         if: success()
@@ -458,20 +423,14 @@ jobs:
           PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
           OWNER: ${{ steps.parse_pr.outputs.owner }}
           REPO: ${{ steps.parse_pr.outputs.repo }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
-          
-          # Get the new PR URL
-          NEW_PR=$(gh pr list --repo "$OWNER/$REPO" --head "$BRANCH_NAME" --json url --jq '.[0].url' 2>/dev/null || echo "")
-          
-          if [ -n "$NEW_PR" ]; then
-            COMMENT="## 🤖 Claude Code Agent
+          COMMENT="## 🤖 Claude Code Agent
 
-          I've analyzed the review comments and applied the requested changes.
+          I've analyzed the review comments and pushed fixes directly to this PR.
 
-          **Follow-up PR:** $NEW_PR
-
-          Please review the changes and merge them into this branch if they look good."
+          Please review the latest commit(s) to see the applied changes.
           
-            gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "$COMMENT"
-          fi
+          See \`REFACTOR_SUMMARY.md\` in the commit for details of all changes made."
+          
+          gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "$COMMENT"

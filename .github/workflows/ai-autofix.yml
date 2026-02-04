@@ -226,14 +226,10 @@ jobs:
           name: pr-data-${{ needs.prepare.outputs.pr_number }}
           path: .
 
-      - name: Prepare Branch
-        env:
-          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+      - name: Configure Git
         run: |
-          BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
           git config user.name "claude-code-agent"
           git config user.email "claude-agent@anthropic.com"
-          git switch -c "$BRANCH_NAME" 2>/dev/null || git switch "$BRANCH_NAME"
 
       - name: Run Claude Code Agent
         id: claude_agent
@@ -272,7 +268,7 @@ jobs:
             --allowedTools "Bash" "Edit" "Read" "Write" "LS" "Glob" "Grep"
             --max-turns 50
 
-      - name: Commit and Push
+      - name: Commit and Push to Original PR
         env:
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
           OWNER: ${{ needs.prepare.outputs.owner }}
@@ -280,8 +276,6 @@ jobs:
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
-          
           # Clean up generated files
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
           
@@ -290,18 +284,20 @@ jobs:
             exit 0
           fi
           
-          # Stage and commit locally
+          # Stage and commit
           git add -A
-          git commit -m "Claude AI refactors for PR #$PR_NUMBER"
+          git commit -m "Claude AI: Apply review feedback for PR #$PR_NUMBER"
           
-          # Push using GitHub CLI (authenticated via GH_TOKEN)
-          # This avoids git credential issues
-          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME --force
+          # Push directly to the original PR branch
+          echo "Pushing to original PR branch: $HEAD_REF"
+          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$HEAD_REF
           
-          # Create PR using gh CLI
-          gh pr create --repo "$OWNER/$REPO" --base "$HEAD_REF" --head "$BRANCH_NAME" \
-            --title "Claude AI refactors for PR #$PR_NUMBER" \
-            --body "Automated fixes by Claude Code Agent for PR #$PR_NUMBER" || echo "PR may already exist"
+          # Add a comment to the original PR
+          gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "## 🤖 Claude Code Agent
+
+          I've analyzed the review comments and pushed fixes directly to this PR.
+
+          Please review the latest commit(s) to see the applied changes."
 
   # ============================================
   # WARP: Run Warp Agent
@@ -329,14 +325,10 @@ jobs:
           name: pr-data-${{ needs.prepare.outputs.pr_number }}
           path: .
 
-      - name: Prepare Branch
-        env:
-          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+      - name: Configure Git
         run: |
-          BRANCH_NAME="warp-refactor/pr-$PR_NUMBER"
           git config user.name "warp-agent"
           git config user.email "agent@warp.dev"
-          git switch -c "$BRANCH_NAME" 2>/dev/null || git switch "$BRANCH_NAME"
 
       - name: Run Warp Agent
         id: run-warp-agent
@@ -397,7 +389,7 @@ jobs:
           ${{ steps.run-warp-agent.outputs.agent_output }}
           EOF
 
-      - name: Commit and Push
+      - name: Commit and Push to Original PR
         env:
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
           OWNER: ${{ needs.prepare.outputs.owner }}
@@ -405,8 +397,6 @@ jobs:
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          BRANCH_NAME="warp-refactor/pr-$PR_NUMBER"
-          
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
           
           if [ -z "$(git status --porcelain)" ]; then
@@ -415,53 +405,16 @@ jobs:
           fi
           
           git add -A
-          git commit -m "Warp AI refactors for PR #$PR_NUMBER"
+          git commit -m "Warp AI: Apply review feedback for PR #$PR_NUMBER"
           
-          # Push using token in URL to avoid credential issues
-          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME --force
+          # Push directly to the original PR branch
+          echo "Pushing to original PR branch: $HEAD_REF"
+          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$HEAD_REF
           
-          ORIGINAL_PR_URL="https://github.com/$OWNER/$REPO/pull/$PR_NUMBER"
-          
-          gh pr create --repo "$OWNER/$REPO" --base "$HEAD_REF" --head "$BRANCH_NAME" \
-            --title "Warp AI refactors for PR #$PR_NUMBER" \
-            --body "This PR was generated automatically by the Warp AI agent to address review comments on $ORIGINAL_PR_URL." || echo "PR may already exist"
+          # Add a comment to the original PR
+          gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "## 🤖 Warp AI Agent
 
-  # ============================================
-  # SUMMARY: Post results to original PR
-  # ============================================
-  post-summary:
-    needs: [prepare, claude-fix, warp-fix]
-    if: always() && (needs.claude-fix.result == 'success' || needs.warp-fix.result == 'success')
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || github.token }}
-    
-    steps:
-      - name: Post Comment on Original PR
-        run: |
-          PR_NUMBER="${{ needs.prepare.outputs.pr_number }}"
-          OWNER="${{ needs.prepare.outputs.owner }}"
-          REPO="${{ needs.prepare.outputs.repo }}"
-          PROVIDER="${{ github.event.inputs.ai_provider }}"
-          
-          if [ "$PROVIDER" == "claude" ]; then
-            BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
-            AGENT_NAME="Claude Code Agent"
-          else
-            BRANCH_NAME="warp-refactor/pr-$PR_NUMBER"
-            AGENT_NAME="Warp AI Agent"
-          fi
-          
-          NEW_PR=$(gh pr list --repo "$OWNER/$REPO" --head "$BRANCH_NAME" --json url --jq '.[0].url' 2>/dev/null || echo "")
-          
-          if [ -n "$NEW_PR" ]; then
-            COMMENT="## 🤖 $AGENT_NAME
+          I've analyzed the review comments and pushed fixes directly to this PR.
 
-          I've analyzed the review comments and applied the requested changes.
+          Please review the latest commit(s) to see the applied changes."
 
-          **Follow-up PR:** $NEW_PR
-
-          Please review the changes and merge them into this branch if they look good."
-            
-            gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "$COMMENT"
-          fi
