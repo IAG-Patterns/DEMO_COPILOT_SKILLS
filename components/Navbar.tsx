@@ -8,11 +8,13 @@ import {
   TrendingUp, 
   DollarSign, 
   Cloud,
+  Bell,
   Menu,
   X
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
+import NotificationCenter from './NotificationCenter';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -20,6 +22,7 @@ const navItems = [
   { href: '/markets', label: 'Markets', icon: TrendingUp },
   { href: '/currencies', label: 'Currencies', icon: DollarSign },
   { href: '/weather', label: 'Weather', icon: Cloud },
+  { href: '/notifications', label: 'Notifications', icon: Bell },
 ];
 
 export default function Navbar() {
@@ -31,10 +34,13 @@ export default function Navbar() {
       {/* Desktop Sidebar */}
       <nav className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-gray-900 text-white flex-col z-50">
         <div className="p-6 border-b border-gray-700">
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Plane className="w-6 h-6 text-blue-400" />
-            AviaBiz Dashboard
-          </h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              <Plane className="w-6 h-6 text-blue-400" />
+              AviaBiz Dashboard
+            </h1>
+            <NotificationCenter />
+          </div>
         </div>
         
         <div className="flex-1 py-6">
