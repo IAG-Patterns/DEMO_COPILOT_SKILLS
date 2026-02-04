@@ -1,0 +1,8 @@
+{
+  "verbose": true,
+  "permission-mode": "bypassPermissions",
+  "output-format": "text",
+  "compact": false,
+  "max-turns": 50,
+  "timeout": 600000
+}

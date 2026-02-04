@@ -1,0 +1,94 @@
+name: Claude Code on Mention
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  claude-respond:
+    # Only run if @claude is mentioned
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Get Trigger Context
+        id: context
+        run: |
+          EVENT_NAME="${{ github.event_name }}"
+          
+          case "$EVENT_NAME" in
+            issue_comment)
+              COMMENT_BODY="${{ github.event.comment.body }}"
+              COMMENT_AUTHOR="${{ github.event.comment.user.login }}"
+              ISSUE_NUMBER="${{ github.event.issue.number }}"
+              IS_PR="${{ github.event.issue.pull_request && 'true' || 'false' }}"
+              ;;
+            pull_request_review_comment)
+              COMMENT_BODY="${{ github.event.comment.body }}"
+              COMMENT_AUTHOR="${{ github.event.comment.user.login }}"
+              ISSUE_NUMBER="${{ github.event.pull_request.number }}"
+              IS_PR="true"
+              ;;
+            pull_request_review)
+              COMMENT_BODY="${{ github.event.review.body }}"
+              COMMENT_AUTHOR="${{ github.event.review.user.login }}"
+              ISSUE_NUMBER="${{ github.event.pull_request.number }}"
+              IS_PR="true"
+              ;;
+            issues)
+              COMMENT_BODY="${{ github.event.issue.body }}"
+              COMMENT_AUTHOR="${{ github.event.issue.user.login }}"
+              ISSUE_NUMBER="${{ github.event.issue.number }}"
+              IS_PR="false"
+              ;;
+          esac
+          
+          echo "event_name=$EVENT_NAME" >> $GITHUB_OUTPUT
+          echo "comment_author=$COMMENT_AUTHOR" >> $GITHUB_OUTPUT
+          echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+          echo "is_pr=$IS_PR" >> $GITHUB_OUTPUT
+          
+          echo "Trigger: $EVENT_NAME by $COMMENT_AUTHOR on #$ISSUE_NUMBER (PR: $IS_PR)"
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          
+          # Allow Claude to read CI results on PRs
+          additional_permissions: |
+            actions: read
+
+          # Optional: Add claude_args to customize behavior
+          # claude_args: '--allowed-tools Bash(gh pr:*),Edit,Read'
+
+      - name: Log Result
+        if: always()
+        run: |
+          echo "Claude Code action completed"
+          echo "Event: ${{ steps.context.outputs.event_name }}"
+          echo "Issue/PR: #${{ steps.context.outputs.issue_number }}"

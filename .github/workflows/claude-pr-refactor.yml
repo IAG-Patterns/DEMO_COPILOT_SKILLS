@@ -1,0 +1,471 @@
+name: Claude Code PR Refactor
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        description: 'Pull Request URL (e.g., https://github.com/owner/repo/pull/123)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+  checks: read
+  statuses: read
+  id-token: write
+
+jobs:
+  claude-refactor:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || github.token }}
+    
+    steps:
+      - name: Parse PR URL
+        id: parse_pr
+        run: |
+          PR_URL="${{ github.event.inputs.pr_url }}"
+          
+          # Extract owner, repo, and PR number from URL
+          if [[ "$PR_URL" =~ github\.com/([^/]+)/([^/]+)/pull/([0-9]+) ]]; then
+            OWNER="${BASH_REMATCH[1]}"
+            REPO="${BASH_REMATCH[2]}"
+            PR_NUMBER="${BASH_REMATCH[3]}"
+          elif [[ "$PR_URL" =~ ([^/]+)/([^#]+)\#([0-9]+) ]]; then
+            OWNER="${BASH_REMATCH[1]}"
+            REPO="${BASH_REMATCH[2]}"
+            PR_NUMBER="${BASH_REMATCH[3]}"
+          else
+            echo "Error: Invalid PR URL format"
+            echo "Expected: https://github.com/owner/repo/pull/123 or owner/repo#123"
+            exit 1
+          fi
+          
+          echo "owner=$OWNER" >> $GITHUB_OUTPUT
+          echo "repo=$REPO" >> $GITHUB_OUTPUT
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "Parsed PR: $OWNER/$REPO#$PR_NUMBER"
+
+      - name: Get PR Details
+        id: pr_details
+        run: |
+          OWNER="${{ steps.parse_pr.outputs.owner }}"
+          REPO="${{ steps.parse_pr.outputs.repo }}"
+          PR_NUMBER="${{ steps.parse_pr.outputs.pr_number }}"
+          
+          echo "Fetching PR details for $OWNER/$REPO#$PR_NUMBER..."
+          
+          PR_DATA=$(gh api "/repos/$OWNER/$REPO/pulls/$PR_NUMBER")
+          
+          HEAD_REF=$(echo "$PR_DATA" | jq -r '.head.ref')
+          HEAD_SHA=$(echo "$PR_DATA" | jq -r '.head.sha')
+          BASE_REF=$(echo "$PR_DATA" | jq -r '.base.ref')
+          PR_TITLE=$(echo "$PR_DATA" | jq -r '.title')
+          PR_STATE=$(echo "$PR_DATA" | jq -r '.state')
+          
+          echo "head_ref=$HEAD_REF" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "base_ref=$BASE_REF" >> $GITHUB_OUTPUT
+          echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
+          echo "pr_state=$PR_STATE" >> $GITHUB_OUTPUT
+          
+          echo "PR #$PR_NUMBER: $PR_TITLE"
+          echo "Branch: $HEAD_REF (SHA: $HEAD_SHA)"
+          echo "State: $PR_STATE"
+
+      - name: Checkout PR Branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.parse_pr.outputs.owner }}/${{ steps.parse_pr.outputs.repo }}
+          ref: ${{ steps.pr_details.outputs.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN || github.token }}
+
+      - name: Checkout Infra Files
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.ref }}
+          path: _infra
+          sparse-checkout: |
+            .github/CLAUDE.md
+            .github/claude-config
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN || github.token }}
+
+      - name: Copy Config Files
+        run: |
+          mkdir -p .claude-config
+          cp _infra/.github/CLAUDE.md . 2>/dev/null || echo "No CLAUDE.md found"
+          cp -r _infra/.github/claude-config/* .claude-config/ 2>/dev/null || echo "No claude-config found"
+          rm -rf _infra
+
+      - name: Fetch PR Conversation Comments
+        id: conversation_comments
+        run: |
+          OWNER="${{ steps.parse_pr.outputs.owner }}"
+          REPO="${{ steps.parse_pr.outputs.repo }}"
+          PR_NUMBER="${{ steps.parse_pr.outputs.pr_number }}"
+          
+          echo "Fetching conversation comments..."
+          
+          gh api "/repos/$OWNER/$REPO/issues/$PR_NUMBER/comments" \
+            --paginate \
+            --jq '[.[] | {
+              id: .id,
+              type: "conversation",
+              author: .user.login,
+              author_type: .user.type,
+              created_at: .created_at,
+              updated_at: .updated_at,
+              body: .body,
+              html_url: .html_url
+            }]' > conversation_comments.json
+          
+          COUNT=$(jq 'length' conversation_comments.json)
+          echo "Found $COUNT conversation comments"
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Fetch PR Review Comments (Inline)
+        id: review_comments
+        run: |
+          OWNER="${{ steps.parse_pr.outputs.owner }}"
+          REPO="${{ steps.parse_pr.outputs.repo }}"
+          PR_NUMBER="${{ steps.parse_pr.outputs.pr_number }}"
+          
+          echo "Fetching review comments (inline code comments)..."
+          
+          gh api "/repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments" \
+            --paginate \
+            --jq '[.[] | {
+              id: .id,
+              type: "review",
+              author: .user.login,
+              author_type: .user.type,
+              created_at: .created_at,
+              updated_at: .updated_at,
+              body: .body,
+              path: .path,
+              commit_id: .commit_id,
+              diff_hunk: .diff_hunk,
+              line: .line,
+              original_line: .original_line,
+              start_line: .start_line,
+              side: .side,
+              in_reply_to_id: .in_reply_to_id,
+              html_url: .html_url
+            }]' > review_comments.json
+          
+          COUNT=$(jq 'length' review_comments.json)
+          echo "Found $COUNT review comments"
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Fetch PR Reviews
+        id: reviews
+        run: |
+          OWNER="${{ steps.parse_pr.outputs.owner }}"
+          REPO="${{ steps.parse_pr.outputs.repo }}"
+          PR_NUMBER="${{ steps.parse_pr.outputs.pr_number }}"
+          
+          echo "Fetching PR reviews..."
+          
+          gh api "/repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" \
+            --paginate \
+            --jq '[.[] | {
+              id: .id,
+              type: "review_summary",
+              author: .user.login,
+              author_type: .user.type,
+              state: .state,
+              body: .body,
+              commit_id: .commit_id,
+              submitted_at: .submitted_at,
+              html_url: .html_url
+            }]' > reviews.json
+          
+          COUNT=$(jq 'length' reviews.json)
+          echo "Found $COUNT reviews"
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Build Refactor Tasks
+        env:
+          PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
+          OWNER: ${{ steps.parse_pr.outputs.owner }}
+          REPO: ${{ steps.parse_pr.outputs.repo }}
+          PR_TITLE: ${{ steps.pr_details.outputs.pr_title }}
+        run: |
+          echo "Building refactor_tasks.json from review comments..."
+          
+          # Build refactor tasks from inline review comments (excluding bots)
+          jq -n \
+            --argjson review "$(cat review_comments.json)" \
+            '[
+              $review[]
+              | select(.line != null and .author_type != "Bot")
+              | . as $root
+              | {
+                  file: .path,
+                  line: .line,
+                  author: .author,
+                  created_at: .created_at,
+                  comment: .body,
+                  conversation: (
+                    [{author: .author, body: .body}] +
+                    ($review | map(select(.in_reply_to_id == $root.id)) | map({author, body}))
+                  ),
+                  html_url: .html_url,
+                  suggestion_type: "refactor",
+                  status: "active"
+                }
+            ]' > refactor_tasks.json
+          
+          TASK_COUNT=$(jq 'length' refactor_tasks.json)
+          echo "Created $TASK_COUNT refactor tasks"
+          
+          # Build full PR conversations JSON
+          jq -n \
+            --argjson conversation "$(cat conversation_comments.json)" \
+            --argjson review "$(cat review_comments.json)" \
+            --argjson reviews "$(cat reviews.json)" \
+            --arg pr_number "$PR_NUMBER" \
+            --arg owner "$OWNER" \
+            --arg repo "$REPO" \
+            --arg pr_title "$PR_TITLE" \
+            --arg exported_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            '{
+              metadata: {
+                pull_request: {
+                  number: ($pr_number | tonumber),
+                  owner: $owner,
+                  repo: $repo,
+                  title: $pr_title,
+                  url: "https://github.com/\($owner)/\($repo)/pull/\($pr_number)"
+                },
+                export: {
+                  exported_at: $exported_at,
+                  total_comments: (($conversation | length) + ($review | length)),
+                  conversation_comments: ($conversation | length),
+                  review_comments: ($review | length),
+                  reviews: ($reviews | length)
+                }
+              },
+              comments: {
+                conversation: $conversation,
+                reviews: $review,
+                review_summaries: $reviews
+              }
+            }' > PR_conversations.json
+          
+          echo "Created PR_conversations.json"
+
+      - name: Fetch Security Scan Logs (if available)
+        id: fetch_security
+        continue-on-error: true
+        run: |
+          OWNER="${{ steps.parse_pr.outputs.owner }}"
+          REPO="${{ steps.parse_pr.outputs.repo }}"
+          PR_NUMBER="${{ steps.parse_pr.outputs.pr_number }}"
+          
+          echo "Checking for security scan results..."
+          
+          # Try to find Snyk or CodeQL check runs
+          CHECKS=$(gh pr checks --repo "$OWNER/$REPO" "$PR_NUMBER" --json workflow,name,link 2>/dev/null || echo "[]")
+          
+          # Look for security-related checks
+          SECURITY_CHECK=$(echo "$CHECKS" | jq -r '.[] | select(.workflow | test("snyk|security|codeql"; "i")) | .link' | head -1)
+          
+          if [ -n "$SECURITY_CHECK" ] && [ "$SECURITY_CHECK" != "null" ]; then
+            echo "Found security check: $SECURITY_CHECK"
+            JOB_ID="${SECURITY_CHECK##*/}"
+            
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$OWNER/$REPO/actions/jobs/$JOB_ID/logs" \
+              > snyk_scan.log 2>/dev/null || echo "Could not fetch security logs"
+            
+            if [ -f snyk_scan.log ] && [ -s snyk_scan.log ]; then
+              echo "has_security_logs=true" >> $GITHUB_OUTPUT
+              echo "Fetched security scan logs"
+            else
+              echo "has_security_logs=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "has_security_logs=false" >> $GITHUB_OUTPUT
+            echo "No security scan found"
+          fi
+
+      - name: Upload Artifacts (Pre-Agent)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-data-${{ steps.parse_pr.outputs.pr_number }}
+          path: |
+            PR_conversations.json
+            refactor_tasks.json
+            conversation_comments.json
+            review_comments.json
+            snyk_scan.log
+          retention-days: 30
+
+      - name: Prepare Refactor Branch
+        env:
+          PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
+        run: |
+          echo "Preparing dedicated refactor branch for PR #$PR_NUMBER..."
+          
+          BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
+          
+          git config user.name "claude-code-agent"
+          git config user.email "claude-agent@anthropic.com"
+          
+          if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+            echo "Local branch $BRANCH_NAME already exists; checking it out."
+            git switch "$BRANCH_NAME"
+          else
+            echo "Creating and switching to $BRANCH_NAME from current HEAD."
+            git switch -c "$BRANCH_NAME"
+          fi
+
+      - name: Run Claude Code Agent
+        id: claude_agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          show_full_output: true
+          prompt: |
+            You are an autonomous AI refactoring agent running inside a GitHub Actions workflow.
+
+            ## Context
+            - You are working on PR #${{ steps.parse_pr.outputs.pr_number }} in the repository ${{ steps.parse_pr.outputs.owner }}/${{ steps.parse_pr.outputs.repo }}
+            - PR Title: "${{ steps.pr_details.outputs.pr_title }}"
+            - All PR review comments have been exported to the following files:
+              - `PR_conversations.json`: Full PR conversation with metadata
+              - `refactor_tasks.json`: Actionable inline review comments with file paths and line numbers
+              - `snyk_scan.log`: Security scanner logs (if available)
+
+            ## Your Goals
+            1. Read `refactor_tasks.json` to understand all requested refactors
+            2. For each task, apply the requested code changes:
+               - Navigate to the specified file and line
+               - Understand the reviewer's intent
+               - Apply minimal, targeted changes that address the feedback
+            3. If security issues were found in `snyk_scan.log`, address those as well
+            4. Run the project's tests if available (npm test, pytest, go test, etc.)
+            5. Leave the repository in a buildable, consistent state
+
+            ## Important Constraints
+            - You are running non-interactively. Do not ask for user input.
+            - DO NOT create git commits - the workflow handles this.
+            - DO NOT use subshells like `bash -c '...'`
+            - Prefer editing only the files referenced in refactor_tasks.json
+            - If a comment is outdated (code no longer exists), document why and skip it.
+
+            ## Required Output
+            When finished, print a JSON summary to stdout:
+            ```json
+            {
+              "applied_tasks": number,
+              "skipped_tasks": number,
+              "skipped_reasons": ["reason1", "reason2"],
+              "test_command": "npm test" | null,
+              "tests_passed": true | false | null
+            }
+            ```
+
+            Also create a file `REFACTOR_SUMMARY.md` with details of all changes made.
+          
+          claude_args: '--dangerously-skip-permissions --settings .claude-config/settings.json --allowed-tools Bash,Edit,Read,Write,LS,Glob,Grep'
+
+      - name: Save Claude Agent Summary
+        if: always()
+        run: |
+          cat > claude_agent_summary.json <<'EOF'
+          ${{ steps.claude_agent.outputs.agent_output || '{"error": "No output captured"}' }}
+          EOF
+          echo "Claude agent finished. Summary saved."
+
+      - name: Upload Claude Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-refactor-summary-${{ steps.parse_pr.outputs.pr_number }}
+          path: |
+            claude_agent_summary.json
+            REFACTOR_SUMMARY.md
+          retention-days: 30
+
+      - name: Commit and Push Refactors
+        env:
+          PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
+          OWNER: ${{ steps.parse_pr.outputs.owner }}
+          REPO: ${{ steps.parse_pr.outputs.repo }}
+          HEAD_REF: ${{ steps.pr_details.outputs.head_ref }}
+        run: |
+          echo "Checking for Claude-applied changes to commit..."
+          
+          BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
+          
+          # Remove generated files before checking for changes
+          rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
+          rm -f conversation_comments.json review_comments.json reviews.json
+          rm -rf .claude-config CLAUDE.md
+          
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes detected from Claude agent; skipping commit and PR creation."
+            exit 0
+          fi
+          
+          git add -A
+          git commit -m "Claude AI refactors for PR #$PR_NUMBER
+
+          Applied code review feedback using Claude Code Agent.
+          See REFACTOR_SUMMARY.md for details."
+          
+          echo "Pushing branch $BRANCH_NAME to origin..."
+          git push origin "$BRANCH_NAME" --force-with-lease
+          
+          echo "Creating follow-up PR..."
+          ORIGINAL_PR_URL="https://github.com/$OWNER/$REPO/pull/$PR_NUMBER"
+          
+          gh pr create \
+            --repo "$OWNER/$REPO" \
+            --base "$HEAD_REF" \
+            --head "$BRANCH_NAME" \
+            --title "Claude AI refactors for PR #$PR_NUMBER" \
+            --body "## Automated Refactoring
+
+          This PR was generated automatically by the Claude Code Agent to address review comments on $ORIGINAL_PR_URL.
+
+          ### Changes Applied
+          See \`REFACTOR_SUMMARY.md\` for a detailed list of changes.
+
+          ### Review
+          Please review these changes before merging into the original PR branch."
+          
+          echo "Successfully created follow-up PR with Claude refactors."
+
+      - name: Post Summary Comment
+        if: success()
+        continue-on-error: true
+        env:
+          PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
+          OWNER: ${{ steps.parse_pr.outputs.owner }}
+          REPO: ${{ steps.parse_pr.outputs.repo }}
+        run: |
+          BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
+          
+          # Get the new PR URL
+          NEW_PR=$(gh pr list --repo "$OWNER/$REPO" --head "$BRANCH_NAME" --json url --jq '.[0].url' 2>/dev/null || echo "")
+          
+          if [ -n "$NEW_PR" ]; then
+            COMMENT="## 🤖 Claude Code Agent
+
+          I've analyzed the review comments and applied the requested changes.
+
+          **Follow-up PR:** $NEW_PR
+
+          Please review the changes and merge them into this branch if they look good."
+          
+            gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "$COMMENT"
+          fi
