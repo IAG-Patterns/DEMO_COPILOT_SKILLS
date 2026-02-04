@@ -4,27 +4,44 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/Card';
 import { Bell, Settings, Trash2, Check, Filter } from 'lucide-react';
 
-// Missing interface definitions - using any types
+interface Notification {
+  id: number;
+  type: 'flight' | 'market' | 'weather' | 'currency';
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  priority: 'high' | 'medium' | 'low';
+}
+
+interface NotificationSettings {
+  flightAlerts: boolean;
+  priceAlerts: boolean;
+  weatherAlerts: boolean;
+  emailNotifications: boolean;
+}
+
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState('all');
-  const [settings, setSettings] = useState<any>({
+  const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<NotificationSettings>({
     flightAlerts: true,
     priceAlerts: true,
     weatherAlerts: true,
     emailNotifications: false
   });
 
-  // No loading state
   useEffect(() => {
     // Simulated fetch - no error handling
     const data = generateMockNotifications();
     setNotifications(data);
+    setLoading(false);
   }, []);
 
   // Generate mock data - inefficient, regenerates on every call
   function generateMockNotifications() {
-    var notifications = []; // Using var instead of const
+    const notifications: Notification[] = [];
     for (let i = 0; i < 20; i++) {
       notifications.push({
         id: i + 1,
@@ -46,9 +63,11 @@ export default function NotificationsPage() {
     return n.type === filter;
   });
 
-  // Bulk actions - missing confirmation dialogs
+  // Bulk actions - with confirmation dialogs
   const deleteAll = () => {
-    setNotifications([]);
+    if (window.confirm('Are you sure you want to delete all notifications? This action cannot be undone.')) {
+      setNotifications([]);
+    }
   };
 
   const markAllRead = () => {
@@ -58,8 +77,15 @@ export default function NotificationsPage() {
   // Toggle setting - no persistence
   const toggleSetting = (key: string) => {
     setSettings({ ...settings, [key]: !settings[key] });
-    console.log('Setting toggled:', key); // Debug log left in
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-gray-400">Loading notifications...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -115,7 +141,7 @@ export default function NotificationsPage() {
 
           {/* Notifications list - no pagination */}
           <div className="space-y-3">
-            {filteredNotifications.length == 0 ? ( // Using == instead of ===
+            {filteredNotifications.length === 0 ? ( // Using === instead of ===
               <Card>
                 <div className="text-center py-8 text-gray-400">
                   <Bell className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -127,13 +153,13 @@ export default function NotificationsPage() {
                 <Card key={notification.id}>
                   <div className="flex items-start gap-4">
                     <div className={`p-3 rounded-lg ${
-                      notification.priority == 'high' ? 'bg-red-500/20' : // Using ==
-                      notification.priority == 'medium' ? 'bg-yellow-500/20' :
+                      notification.priority === 'high' ? 'bg-red-500/20' : // Using ===
+                      notification.priority === 'medium' ? 'bg-yellow-500/20' :
                       'bg-gray-700'
                     }`}>
                       <Bell className={`w-5 h-5 ${
-                        notification.priority == 'high' ? 'text-red-400' :
-                        notification.priority == 'medium' ? 'text-yellow-400' :
+                        notification.priority === 'high' ? 'text-red-400' :
+                        notification.priority === 'medium' ? 'text-yellow-400' :
                         'text-gray-400'
                       }`} />
                     </div>
@@ -149,9 +175,9 @@ export default function NotificationsPage() {
                       <p className="text-sm text-gray-400 mt-1">{notification.message}</p>
                       <div className="flex items-center gap-2 mt-2">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          notification.type == 'flight' ? 'bg-blue-500/20 text-blue-400' :
-                          notification.type == 'market' ? 'bg-green-500/20 text-green-400' :
-                          notification.type == 'weather' ? 'bg-purple-500/20 text-purple-400' :
+                          notification.type === 'flight' ? 'bg-blue-500/20 text-blue-400' :
+                          notification.type === 'market' ? 'bg-green-500/20 text-green-400' :
+                          notification.type === 'weather' ? 'bg-purple-500/20 text-purple-400' :
                           'bg-orange-500/20 text-orange-400'
                         }`}>
                           {notification.type}
@@ -191,12 +217,15 @@ export default function NotificationsPage() {
                   <span className="text-gray-300 capitalize">
                     {key.replace(/([A-Z])/g, ' $1').trim()}
                   </span>
-                  {/* Custom toggle - no proper accessibility */}
+                  {/* Custom toggle */}
                   <button
                     onClick={() => toggleSetting(key)}
                     className={`w-12 h-6 rounded-full transition-colors ${
                       value ? 'bg-blue-600' : 'bg-gray-600'
                     }`}
+                    role="switch"
+                    aria-checked={value}
+                    aria-label={`Toggle ${key.replace(/([A-Z])/g, ' $1').trim()}`}
                   >
                     <div className={`w-5 h-5 bg-white rounded-full transform transition-transform ${
                       value ? 'translate-x-6' : 'translate-x-0.5'
@@ -221,7 +250,7 @@ export default function NotificationsPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">High Priority</span>
-                <span className="text-red-400">{notifications.filter(n => n.priority == 'high').length}</span>
+                <span className="text-red-400">{notifications.filter(n => n.priority === 'high').length}</span>
               </div>
             </div>
           </Card>
