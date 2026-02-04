@@ -278,9 +278,11 @@ jobs:
           OWNER: ${{ needs.prepare.outputs.owner }}
           REPO: ${{ needs.prepare.outputs.repo }}
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           BRANCH_NAME="claude-refactor/pr-$PR_NUMBER"
           
+          # Clean up generated files
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
           
           if [ -z "$(git status --porcelain)" ]; then
@@ -288,13 +290,18 @@ jobs:
             exit 0
           fi
           
+          # Stage and commit locally
           git add -A
           git commit -m "Claude AI refactors for PR #$PR_NUMBER"
-          git push origin "$BRANCH_NAME" --force-with-lease
           
+          # Push using GitHub CLI (authenticated via GH_TOKEN)
+          # This avoids git credential issues
+          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME --force
+          
+          # Create PR using gh CLI
           gh pr create --repo "$OWNER/$REPO" --base "$HEAD_REF" --head "$BRANCH_NAME" \
             --title "Claude AI refactors for PR #$PR_NUMBER" \
-            --body "Automated fixes by Claude Code Agent for PR #$PR_NUMBER"
+            --body "Automated fixes by Claude Code Agent for PR #$PR_NUMBER" || echo "PR may already exist"
 
   # ============================================
   # WARP: Run Warp Agent
@@ -396,6 +403,7 @@ jobs:
           OWNER: ${{ needs.prepare.outputs.owner }}
           REPO: ${{ needs.prepare.outputs.repo }}
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           BRANCH_NAME="warp-refactor/pr-$PR_NUMBER"
           
@@ -408,13 +416,15 @@ jobs:
           
           git add -A
           git commit -m "Warp AI refactors for PR #$PR_NUMBER"
-          git push origin "$BRANCH_NAME" --force-with-lease
+          
+          # Push using token in URL to avoid credential issues
+          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME --force
           
           ORIGINAL_PR_URL="https://github.com/$OWNER/$REPO/pull/$PR_NUMBER"
           
           gh pr create --repo "$OWNER/$REPO" --base "$HEAD_REF" --head "$BRANCH_NAME" \
             --title "Warp AI refactors for PR #$PR_NUMBER" \
-            --body "This PR was generated automatically by the Warp AI agent to address review comments on $ORIGINAL_PR_URL."
+            --body "This PR was generated automatically by the Warp AI agent to address review comments on $ORIGINAL_PR_URL." || echo "PR may already exist"
 
   # ============================================
   # SUMMARY: Post results to original PR
