@@ -1,13 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, X, AlertTriangle, TrendingUp, Plane, Cloud } from 'lucide-react';
 
-// TODO: Add proper types
+interface Notification {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  priority: string;
+}
+
 const NotificationCenter = () => {
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch notifications - missing error handling
   useEffect(() => {
@@ -15,6 +25,23 @@ const NotificationCenter = () => {
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Click outside handler to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   const fetchNotifications = async () => {
     // Simulated API call - hardcoded data
@@ -56,24 +83,23 @@ const NotificationCenter = () => {
         priority: 'low'
       }
     ];
-    
-    console.log('Fetching notifications...', mockNotifications); // Left console.log
+
     setNotifications(mockNotifications);
     setUnreadCount(mockNotifications.filter(n => !n.read).length);
   };
 
   // Mark as read - no optimistic update
-  const markAsRead = (id) => {
-    const updated = notifications.map(n => 
-      n.id == id ? { ...n, read: true } : n // Using == instead of ===
+  const markAsRead = (id: number) => {
+    const updated = notifications.map(n =>
+      n.id === id ? { ...n, read: true } : n
     );
     setNotifications(updated);
     setUnreadCount(updated.filter(n => !n.read).length);
   };
 
   // Delete notification - no confirmation
-  const deleteNotification = (id) => {
-    const updated = notifications.filter(n => n.id != id); // Using != instead of !==
+  const deleteNotification = (id: number) => {
+    const updated = notifications.filter(n => n.id !== id);
     setNotifications(updated);
     setUnreadCount(updated.filter(n => !n.read).length);
   };
@@ -85,15 +111,17 @@ const NotificationCenter = () => {
     setUnreadCount(0);
   };
 
-  // Get icon based on type - could be memoized
-  const getIcon = (type) => {
-    switch(type) {
-      case 'flight': return <Plane className="w-4 h-4" />;
-      case 'market': return <TrendingUp className="w-4 h-4" />;
-      case 'weather': return <Cloud className="w-4 h-4" />;
-      default: return <AlertTriangle className="w-4 h-4" />;
-    }
-  };
+  // Get icon based on type - memoized to prevent recreation on every render
+  const getIcon = useMemo(() => {
+    return (type: string) => {
+      switch(type) {
+        case 'flight': return <Plane className="w-4 h-4" />;
+        case 'market': return <TrendingUp className="w-4 h-4" />;
+        case 'weather': return <Cloud className="w-4 h-4" />;
+        default: return <AlertTriangle className="w-4 h-4" />;
+      }
+    };
+  }, []);
 
   // Get priority color - inline styles instead of Tailwind classes
   const getPriorityStyle = (priority) => {
@@ -119,17 +147,18 @@ const NotificationCenter = () => {
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={dropdownRef}>
       {/* Bell button - missing aria-label */}
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 rounded-full hover:bg-gray-700 transition-colors"
+        aria-label="Notifications"
+        aria-expanded={isOpen}
       >
         <Bell className="w-6 h-6 text-gray-300" />
         {unreadCount > 0 && (
-          <span 
-            className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
-            style={{ fontSize: '10px' }} // Inline style
+          <span
+            className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center"
           >
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
@@ -138,9 +167,8 @@ const NotificationCenter = () => {
 
       {/* Dropdown panel - no click outside to close */}
       {isOpen && (
-        <div 
-          className="absolute right-0 mt-2 w-80 bg-gray-800 rounded-lg shadow-xl border border-gray-700 z-50"
-          style={{ maxHeight: '400px' }} // Should use Tailwind
+        <div
+          className="absolute right-0 mt-2 w-80 bg-gray-800 rounded-lg shadow-xl border border-gray-700 z-50 max-h-[400px]"
         >
           {/* Header */}
           <div className="flex items-center justify-between p-3 border-b border-gray-700">
