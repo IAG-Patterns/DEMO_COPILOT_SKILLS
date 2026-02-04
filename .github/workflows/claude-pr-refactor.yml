@@ -308,10 +308,21 @@ jobs:
             snyk_scan.log
           retention-days: 30
 
-      - name: Configure Git
+      - name: Configure Git and Create Branch
+        id: setup_branch
+        env:
+          PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
         run: |
           git config user.name "claude-code-agent"
           git config user.email "claude-agent@anthropic.com"
+          
+          # Create unique branch name with timestamp
+          TIMESTAMP=$(date +%s)
+          BRANCH_NAME="claude-refactor/pr-${PR_NUMBER}-${TIMESTAMP}"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          
+          git checkout -b "$BRANCH_NAME"
+          echo "Created branch: $BRANCH_NAME"
 
       - name: Run Claude Code Agent
         id: claude_agent
@@ -385,12 +396,13 @@ jobs:
             REFACTOR_SUMMARY.md
           retention-days: 30
 
-      - name: Commit and Push to Original PR
+      - name: Commit and Create PR
         env:
           PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
           OWNER: ${{ steps.parse_pr.outputs.owner }}
           REPO: ${{ steps.parse_pr.outputs.repo }}
           HEAD_REF: ${{ steps.pr_details.outputs.head_ref }}
+          BRANCH_NAME: ${{ steps.setup_branch.outputs.branch_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "Checking for Claude-applied changes to commit..."
@@ -411,10 +423,30 @@ jobs:
           Applied code review feedback using Claude Code Agent.
           See REFACTOR_SUMMARY.md for details."
           
-          echo "Pushing directly to original PR branch: $HEAD_REF"
-          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$HEAD_REF
+          # Push the new branch
+          echo "Pushing branch: $BRANCH_NAME"
+          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME
           
-          echo "Successfully pushed Claude refactors to PR #$PR_NUMBER"
+          # Create PR targeting the original PR's branch
+          echo "Creating PR: $BRANCH_NAME → $HEAD_REF"
+          NEW_PR_URL=$(gh pr create --repo "$OWNER/$REPO" \
+            --base "$HEAD_REF" \
+            --head "$BRANCH_NAME" \
+            --title "🤖 Claude AI fixes for PR #$PR_NUMBER" \
+            --body "## Automated Fixes by Claude Code Agent
+
+          This PR contains fixes for review comments on PR #$PR_NUMBER.
+
+          **Merge this PR** to apply the changes to the original PR branch (\`$HEAD_REF\`).
+
+          ### Changes Applied
+          See \`REFACTOR_SUMMARY.md\` for a detailed list of changes.
+
+          ---
+          _Generated automatically by Claude Code Agent_")
+          
+          echo "Created PR: $NEW_PR_URL"
+          echo "new_pr_url=$NEW_PR_URL" >> $GITHUB_OUTPUT
 
       - name: Post Summary Comment
         if: success()
@@ -423,14 +455,22 @@ jobs:
           PR_NUMBER: ${{ steps.parse_pr.outputs.pr_number }}
           OWNER: ${{ steps.parse_pr.outputs.owner }}
           REPO: ${{ steps.parse_pr.outputs.repo }}
+          BRANCH_NAME: ${{ steps.setup_branch.outputs.branch_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          COMMENT="## 🤖 Claude Code Agent
-
-          I've analyzed the review comments and pushed fixes directly to this PR.
-
-          Please review the latest commit(s) to see the applied changes.
+          # Get the new PR URL
+          NEW_PR_URL=$(gh pr list --repo "$OWNER/$REPO" --head "$BRANCH_NAME" --json url --jq '.[0].url' 2>/dev/null || echo "")
           
-          See \`REFACTOR_SUMMARY.md\` in the commit for details of all changes made."
+          if [ -n "$NEW_PR_URL" ]; then
+            COMMENT="## 🤖 Claude Code Agent
+
+          I've analyzed the review comments and created a PR with the fixes:
+
+          **➡️ $NEW_PR_URL**
+
+          Please review and merge that PR to apply the changes to this branch.
           
-          gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "$COMMENT"
+          See \`REFACTOR_SUMMARY.md\` in the PR for details of all changes made."
+            
+            gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "$COMMENT"
+          fi

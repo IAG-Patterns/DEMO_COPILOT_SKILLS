@@ -226,10 +226,21 @@ jobs:
           name: pr-data-${{ needs.prepare.outputs.pr_number }}
           path: .
 
-      - name: Configure Git
+      - name: Configure Git and Create Branch
+        id: setup_branch
+        env:
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
         run: |
           git config user.name "claude-code-agent"
           git config user.email "claude-agent@anthropic.com"
+          
+          # Create unique branch name with timestamp
+          TIMESTAMP=$(date +%s)
+          BRANCH_NAME="claude-refactor/pr-${PR_NUMBER}-${TIMESTAMP}"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          
+          git checkout -b "$BRANCH_NAME"
+          echo "Created branch: $BRANCH_NAME"
 
       - name: Run Claude Code Agent
         id: claude_agent
@@ -268,12 +279,13 @@ jobs:
             --allowedTools "Bash" "Edit" "Read" "Write" "LS" "Glob" "Grep"
             --max-turns 50
 
-      - name: Commit and Push to Original PR
+      - name: Commit and Create PR
         env:
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
           OWNER: ${{ needs.prepare.outputs.owner }}
           REPO: ${{ needs.prepare.outputs.repo }}
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
+          BRANCH_NAME: ${{ steps.setup_branch.outputs.branch_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
           # Clean up generated files
@@ -288,16 +300,33 @@ jobs:
           git add -A
           git commit -m "Claude AI: Apply review feedback for PR #$PR_NUMBER"
           
-          # Push directly to the original PR branch
-          echo "Pushing to original PR branch: $HEAD_REF"
-          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$HEAD_REF
+          # Push the new branch
+          echo "Pushing branch: $BRANCH_NAME"
+          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME
           
-          # Add a comment to the original PR
+          # Create PR targeting the original PR's branch
+          echo "Creating PR: $BRANCH_NAME → $HEAD_REF"
+          NEW_PR_URL=$(gh pr create --repo "$OWNER/$REPO" \
+            --base "$HEAD_REF" \
+            --head "$BRANCH_NAME" \
+            --title "🤖 Claude AI fixes for PR #$PR_NUMBER" \
+            --body "## Automated Fixes by Claude Code Agent
+
+          This PR contains fixes for review comments on PR #$PR_NUMBER.
+
+          **Merge this PR** to apply the changes to the original PR branch (\`$HEAD_REF\`).
+
+          ---
+          _Generated automatically by Claude Code Agent_")
+          
+          # Comment on the original PR with link to the new PR
           gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "## 🤖 Claude Code Agent
 
-          I've analyzed the review comments and pushed fixes directly to this PR.
+          I've analyzed the review comments and created a PR with the fixes:
 
-          Please review the latest commit(s) to see the applied changes."
+          **➡️ $NEW_PR_URL**
+
+          Please review and merge that PR to apply the changes to this branch."
 
   # ============================================
   # WARP: Run Warp Agent
@@ -325,10 +354,21 @@ jobs:
           name: pr-data-${{ needs.prepare.outputs.pr_number }}
           path: .
 
-      - name: Configure Git
+      - name: Configure Git and Create Branch
+        id: setup_branch
+        env:
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
         run: |
           git config user.name "warp-agent"
           git config user.email "agent@warp.dev"
+          
+          # Create unique branch name with timestamp
+          TIMESTAMP=$(date +%s)
+          BRANCH_NAME="warp-refactor/pr-${PR_NUMBER}-${TIMESTAMP}"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          
+          git checkout -b "$BRANCH_NAME"
+          echo "Created branch: $BRANCH_NAME"
 
       - name: Run Warp Agent
         id: run-warp-agent
@@ -389,12 +429,13 @@ jobs:
           ${{ steps.run-warp-agent.outputs.agent_output }}
           EOF
 
-      - name: Commit and Push to Original PR
+      - name: Commit and Create PR
         env:
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
           OWNER: ${{ needs.prepare.outputs.owner }}
           REPO: ${{ needs.prepare.outputs.repo }}
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
+          BRANCH_NAME: ${{ steps.setup_branch.outputs.branch_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
@@ -407,14 +448,31 @@ jobs:
           git add -A
           git commit -m "Warp AI: Apply review feedback for PR #$PR_NUMBER"
           
-          # Push directly to the original PR branch
-          echo "Pushing to original PR branch: $HEAD_REF"
-          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$HEAD_REF
+          # Push the new branch
+          echo "Pushing branch: $BRANCH_NAME"
+          git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME
           
-          # Add a comment to the original PR
+          # Create PR targeting the original PR's branch
+          echo "Creating PR: $BRANCH_NAME → $HEAD_REF"
+          NEW_PR_URL=$(gh pr create --repo "$OWNER/$REPO" \
+            --base "$HEAD_REF" \
+            --head "$BRANCH_NAME" \
+            --title "🤖 Warp AI fixes for PR #$PR_NUMBER" \
+            --body "## Automated Fixes by Warp AI Agent
+
+          This PR contains fixes for review comments on PR #$PR_NUMBER.
+
+          **Merge this PR** to apply the changes to the original PR branch (\`$HEAD_REF\`).
+
+          ---
+          _Generated automatically by Warp AI Agent_")
+          
+          # Comment on the original PR with link to the new PR
           gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "## 🤖 Warp AI Agent
 
-          I've analyzed the review comments and pushed fixes directly to this PR.
+          I've analyzed the review comments and created a PR with the fixes:
 
-          Please review the latest commit(s) to see the applied changes."
+          **➡️ $NEW_PR_URL**
+
+          Please review and merge that PR to apply the changes to this branch."
 
