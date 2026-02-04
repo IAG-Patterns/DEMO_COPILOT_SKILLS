@@ -139,8 +139,8 @@ Ensure the repository has:
 
 ## Configuration Files
 
-### `.github/CLAUDE.md`
-Main agent guidelines that apply to all Claude Code workflows.
+### `CLAUDE.md` (Repository Root)
+Main agent guidelines that apply to all Claude Code workflows. Must be at the repository root for Claude Code to automatically detect it.
 
 ### `.github/claude-config/`
 - `settings.json` - Claude runtime settings
