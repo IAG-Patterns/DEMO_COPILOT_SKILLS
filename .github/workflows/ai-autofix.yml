@@ -286,7 +286,7 @@ jobs:
           REPO: ${{ needs.prepare.outputs.repo }}
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
           BRANCH_NAME: ${{ steps.setup_branch.outputs.branch_name }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || github.token }}
         run: |
           # Clean up generated files
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
@@ -436,7 +436,7 @@ jobs:
           REPO: ${{ needs.prepare.outputs.repo }}
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
           BRANCH_NAME: ${{ steps.setup_branch.outputs.branch_name }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || github.token }}
         run: |
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
           
