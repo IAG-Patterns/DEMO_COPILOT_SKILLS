@@ -446,6 +446,42 @@ jobs:
             --allowedTools "Bash" "Edit" "Read" "Write" "LS" "Glob" "Grep"
             --max-turns 50
 
+      - name: Save Claude Summary
+        id: claude_summary
+        run: |
+          # Extract the JSON summary from Claude's output (look for the JSON block)
+          AGENT_OUTPUT='${{ steps.claude_agent.outputs.stdout }}'
+          
+          # Try to extract JSON summary from output
+          echo "$AGENT_OUTPUT" | grep -Pzo '(?s)\{[^{}]*"security_fixes"[^{}]*\{.*?\}.*?\}' > claude_summary.json 2>/dev/null || true
+          
+          # Build a human-readable summary
+          SUMMARY=""
+          
+          # Check git diff for what files changed
+          CHANGED_FILES=$(git diff --name-only HEAD~0 2>/dev/null || git diff --name-only)
+          if [ -n "$CHANGED_FILES" ]; then
+            SUMMARY="### 📁 Files Modified\n"
+            for f in $CHANGED_FILES; do
+              SUMMARY="$SUMMARY- \`$f\`\n"
+            done
+            SUMMARY="$SUMMARY\n"
+          fi
+          
+          # Count changes
+          ADDITIONS=$(git diff --stat 2>/dev/null | tail -1 | grep -oP '\d+(?= insertion)' || echo "0")
+          DELETIONS=$(git diff --stat 2>/dev/null | tail -1 | grep -oP '\d+(?= deletion)' || echo "0")
+          
+          if [ "$ADDITIONS" != "0" ] || [ "$DELETIONS" != "0" ]; then
+            SUMMARY="$SUMMARY### 📊 Change Statistics\n- **+$ADDITIONS** insertions, **-$DELETIONS** deletions\n\n"
+          fi
+          
+          # Save summary for PR body
+          echo -e "$SUMMARY" > pr_summary.txt
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Commit and Create PR
         env:
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
@@ -455,7 +491,7 @@ jobs:
           BRANCH_NAME: ${{ steps.setup_branch.outputs.branch_name }}
           GH_TOKEN: ${{ secrets.CLAUDE_PR_TOKEN }}
         run: |
-          # Clean up generated files
+          # Clean up generated files (keep summary)
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
           
           if [ -z "$(git status --porcelain)" ]; then
@@ -471,27 +507,48 @@ jobs:
           echo "Pushing branch: $BRANCH_NAME"
           git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME
           
+          # Build PR body with summary
+          PR_BODY=$(cat <<'PREOF'
+          ## 🤖 Automated Fixes by Claude Code Agent
+
+          This PR contains automated fixes for PR #${{ needs.prepare.outputs.pr_number }}.
+
+          ${{ steps.claude_summary.outputs.summary }}
+          ### 🔧 What was fixed
+
+          **Security Vulnerabilities:**
+          - Dockerfile security improvements (base image, permissions, secrets)
+          - Dependency updates for vulnerable packages
+
+          **Code Quality:**
+          - Applied PR review comment suggestions
+          - TypeScript type improvements
+          - Code style and accessibility fixes
+
+          ---
+
+          **Merge this PR** to apply the changes to branch \`${{ needs.prepare.outputs.head_ref }}\`.
+
+          _Generated automatically by [Claude Code Agent](https://github.com/anthropics/claude-code-action)_
+          PREOF
+          )
+          
           # Create PR targeting the original PR's branch
           echo "Creating PR: $BRANCH_NAME → $HEAD_REF"
           NEW_PR_URL=$(gh pr create --repo "$OWNER/$REPO" \
             --base "$HEAD_REF" \
             --head "$BRANCH_NAME" \
             --title "🤖 Claude AI fixes for PR #$PR_NUMBER" \
-            --body "## Automated Fixes by Claude Code Agent
-
-          This PR contains fixes for review comments on PR #$PR_NUMBER.
-
-          **Merge this PR** to apply the changes to the original PR branch (\`$HEAD_REF\`).
-
-          ---
-          _Generated automatically by Claude Code Agent_")
+            --body "$PR_BODY")
           
           # Comment on the original PR with link to the new PR
           gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "## 🤖 Claude Code Agent
 
-          I've analyzed the review comments and created a PR with the fixes:
+          I've analyzed the review comments and security scan results, then created a PR with fixes:
 
           **➡️ $NEW_PR_URL**
+
+          ${{ steps.claude_summary.outputs.summary }}
 
           Please review and merge that PR to apply the changes to this branch."
 
@@ -630,10 +687,55 @@ jobs:
             ```
 
       - name: Save Warp Summary
+        id: warp_summary
         run: |
+          # Save raw agent output
           cat > warp_ai_refactor_summary.json <<'EOF'
           ${{ steps.run-warp-agent.outputs.agent_output }}
           EOF
+          
+          # Build a human-readable summary
+          SUMMARY=""
+          
+          # Check git diff for what files changed
+          CHANGED_FILES=$(git diff --name-only HEAD~0 2>/dev/null || git diff --name-only)
+          if [ -n "$CHANGED_FILES" ]; then
+            SUMMARY="### 📁 Files Modified\n"
+            for f in $CHANGED_FILES; do
+              SUMMARY="$SUMMARY- \`$f\`\n"
+            done
+            SUMMARY="$SUMMARY\n"
+          fi
+          
+          # Count changes
+          ADDITIONS=$(git diff --stat 2>/dev/null | tail -1 | grep -oP '\d+(?= insertion)' || echo "0")
+          DELETIONS=$(git diff --stat 2>/dev/null | tail -1 | grep -oP '\d+(?= deletion)' || echo "0")
+          
+          if [ "$ADDITIONS" != "0" ] || [ "$DELETIONS" != "0" ]; then
+            SUMMARY="$SUMMARY### 📊 Change Statistics\n- **+$ADDITIONS** insertions, **-$DELETIONS** deletions\n\n"
+          fi
+          
+          # Try to parse Warp's JSON output for more details
+          if [ -f warp_ai_refactor_summary.json ]; then
+            # Extract security fixes count if available
+            SEC_FIXES=$(jq -r '.security_fixes | to_entries | map("\(.key): \(.value | length) fixes") | join(", ")' warp_ai_refactor_summary.json 2>/dev/null || echo "")
+            if [ -n "$SEC_FIXES" ] && [ "$SEC_FIXES" != "" ]; then
+              SUMMARY="$SUMMARY### 🔒 Security Fixes\n$SEC_FIXES\n\n"
+            fi
+            
+            # Extract review fixes count if available
+            REVIEW_APPLIED=$(jq -r '.review_fixes.applied // 0' warp_ai_refactor_summary.json 2>/dev/null || echo "0")
+            REVIEW_SKIPPED=$(jq -r '.review_fixes.skipped // 0' warp_ai_refactor_summary.json 2>/dev/null || echo "0")
+            if [ "$REVIEW_APPLIED" != "0" ] || [ "$REVIEW_SKIPPED" != "0" ]; then
+              SUMMARY="$SUMMARY### 📝 Review Comments\n- Applied: $REVIEW_APPLIED\n- Skipped: $REVIEW_SKIPPED\n\n"
+            fi
+          fi
+          
+          # Save summary for PR body
+          echo -e "$SUMMARY" > pr_summary.txt
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Commit and Create PR
         env:
@@ -658,27 +760,48 @@ jobs:
           echo "Pushing branch: $BRANCH_NAME"
           git push https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git HEAD:refs/heads/$BRANCH_NAME
           
+          # Build PR body with summary
+          PR_BODY=$(cat <<'PREOF'
+          ## 🤖 Automated Fixes by Warp AI Agent
+
+          This PR contains automated fixes for PR #${{ needs.prepare.outputs.pr_number }}.
+
+          ${{ steps.warp_summary.outputs.summary }}
+          ### 🔧 What was fixed
+
+          **Security Vulnerabilities:**
+          - Dockerfile security improvements (base image, permissions, secrets)
+          - Dependency updates for vulnerable packages
+
+          **Code Quality:**
+          - Applied PR review comment suggestions
+          - TypeScript type improvements
+          - Code style and accessibility fixes
+
+          ---
+
+          **Merge this PR** to apply the changes to branch \`${{ needs.prepare.outputs.head_ref }}\`.
+
+          _Generated automatically by [Warp AI Agent](https://github.com/warpdotdev/warp-agent-action)_
+          PREOF
+          )
+          
           # Create PR targeting the original PR's branch
           echo "Creating PR: $BRANCH_NAME → $HEAD_REF"
           NEW_PR_URL=$(gh pr create --repo "$OWNER/$REPO" \
             --base "$HEAD_REF" \
             --head "$BRANCH_NAME" \
             --title "🤖 Warp AI fixes for PR #$PR_NUMBER" \
-            --body "## Automated Fixes by Warp AI Agent
-
-          This PR contains fixes for review comments on PR #$PR_NUMBER.
-
-          **Merge this PR** to apply the changes to the original PR branch (\`$HEAD_REF\`).
-
-          ---
-          _Generated automatically by Warp AI Agent_")
+            --body "$PR_BODY")
           
           # Comment on the original PR with link to the new PR
           gh pr comment "$PR_NUMBER" --repo "$OWNER/$REPO" --body "## 🤖 Warp AI Agent
 
-          I've analyzed the review comments and created a PR with the fixes:
+          I've analyzed the review comments and security scan results, then created a PR with fixes:
 
           **➡️ $NEW_PR_URL**
+
+          ${{ steps.warp_summary.outputs.summary }}
 
           Please review and merge that PR to apply the changes to this branch."
 
