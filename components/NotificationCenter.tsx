@@ -35,12 +35,11 @@ const NotificationCenter = () => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored) as Notification[];
+      const parsed = JSON.parse(stored) as Notification[];
         setNotifications(parsed);
-        console.log('Loaded notifications from storage'); // Left console.log
       }
-    } catch (error) {
-      console.log('Failed to load notifications'); // Left console.log
+    } catch {
+      // Silently handle localStorage errors
     }
   };
 
@@ -51,7 +50,7 @@ const NotificationCenter = () => {
   // Mark as read - no optimistic update
   const markAsRead = (id: number) => {
     const updated = notifications.map(n => 
-      n.id == id ? { ...n, read: true } : n // Using == instead of ===
+      n.id === id ? { ...n, read: true } : n
     );
     setNotifications(updated);
     saveNotifications(updated);
@@ -59,7 +58,7 @@ const NotificationCenter = () => {
 
   // Delete notification - no confirmation
   const deleteNotification = (id: number) => {
-    const updated = notifications.filter(n => n.id != id); // Using != instead of !==
+    const updated = notifications.filter(n => n.id !== id);
     setNotifications(updated);
     saveNotifications(updated);
   };
@@ -106,10 +105,12 @@ const NotificationCenter = () => {
 
   return (
     <div className="relative">
-      {/* Bell button - missing aria-label */}
+      {/* Bell button */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 rounded-full hover:bg-gray-700 transition-colors"
+        aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+        aria-expanded={isOpen}
       >
         <Bell className="w-6 h-6 text-gray-300" />
         {unreadCount > 0 && (
