@@ -165,7 +165,7 @@ jobs:
           echo "task_count=$TASK_COUNT" >> $GITHUB_OUTPUT
           echo "Created $TASK_COUNT refactor tasks"
 
-      - name: Fetch Security Scan Logs
+      - name: Fetch Security Scan Logs via GH CLI
         id: fetch_security
         if: github.event.inputs.fix_vulnerabilities == 'true'
         continue-on-error: true
@@ -173,21 +173,144 @@ jobs:
           OWNER="${{ steps.parse_pr.outputs.owner }}"
           REPO="${{ steps.parse_pr.outputs.repo }}"
           PR_NUMBER="${{ steps.parse_pr.outputs.pr_number }}"
+          HEAD_SHA="${{ steps.pr_details.outputs.head_sha }}"
           
-          # Try to find security check runs
-          CHECKS=$(gh pr checks --repo "$OWNER/$REPO" "$PR_NUMBER" --json workflow,name,link 2>/dev/null || echo "[]")
-          SECURITY_CHECK=$(echo "$CHECKS" | jq -r '.[] | select(.workflow | test("snyk|security|codeql"; "i")) | .link' | head -1)
+          echo "🔍 Searching for security scan workflow runs for PR #$PR_NUMBER..."
           
-          if [ -n "$SECURITY_CHECK" ] && [ "$SECURITY_CHECK" != "null" ]; then
-            JOB_ID="${SECURITY_CHECK##*/}"
-            gh api -H "Accept: application/vnd.github+json" "/repos/$OWNER/$REPO/actions/jobs/$JOB_ID/logs" > ./repo/snyk_scan.log 2>/dev/null || true
+          # Initialize output file
+          mkdir -p ./repo
+          echo "# Security Scan Results for PR #$PR_NUMBER" > ./repo/snyk_scan.log
+          echo "# Generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ./repo/snyk_scan.log
+          echo "" >> ./repo/snyk_scan.log
+          
+          # Method 1: Find PR CI workflow run by commit SHA
+          echo "📋 Looking for workflow runs on commit $HEAD_SHA..."
+          
+          WORKFLOW_RUNS=$(gh api "/repos/$OWNER/$REPO/actions/runs?head_sha=$HEAD_SHA&per_page=10" \
+            --jq '.workflow_runs[] | select(.name | test("PR CI|Security|Snyk|Build"; "i")) | {id, name, conclusion, jobs_url}' 2>/dev/null || echo "")
+          
+          if [ -n "$WORKFLOW_RUNS" ]; then
+            echo "Found workflow runs:"
+            echo "$WORKFLOW_RUNS" | jq -s '.'
             
-            if [ -f ./repo/snyk_scan.log ] && [ -s ./repo/snyk_scan.log ]; then
-              echo "has_security_logs=true" >> $GITHUB_OUTPUT
-            else
-              echo "has_security_logs=false" >> $GITHUB_OUTPUT
+            # Get the first matching run
+            RUN_ID=$(echo "$WORKFLOW_RUNS" | jq -r '.id' | head -1)
+            
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+              echo "" >> ./repo/snyk_scan.log
+              echo "## Workflow Run ID: $RUN_ID" >> ./repo/snyk_scan.log
+              echo "" >> ./repo/snyk_scan.log
+              
+              # Get all jobs from this run
+              echo "📥 Fetching jobs from workflow run $RUN_ID..."
+              JOBS=$(gh api "/repos/$OWNER/$REPO/actions/runs/$RUN_ID/jobs" --jq '.jobs[] | {id, name, conclusion, steps}' 2>/dev/null || echo "")
+              
+              if [ -n "$JOBS" ]; then
+                # Get job IDs for security-related jobs
+                JOB_IDS=$(echo "$JOBS" | jq -r 'select(.name | test("scan|snyk|security|build"; "i")) | .id' 2>/dev/null || echo "")
+                
+                for JOB_ID in $JOB_IDS; do
+                  if [ -n "$JOB_ID" ] && [ "$JOB_ID" != "null" ]; then
+                    JOB_NAME=$(echo "$JOBS" | jq -r "select(.id == $JOB_ID) | .name" 2>/dev/null || echo "Job $JOB_ID")
+                    echo "📄 Downloading logs for job: $JOB_NAME (ID: $JOB_ID)..."
+                    
+                    echo "### Job: $JOB_NAME" >> ./repo/snyk_scan.log
+                    echo '```' >> ./repo/snyk_scan.log
+                    
+                    # Download job logs
+                    gh api -H "Accept: application/vnd.github+json" \
+                      "/repos/$OWNER/$REPO/actions/jobs/$JOB_ID/logs" >> ./repo/snyk_scan.log 2>/dev/null || \
+                      echo "Failed to download logs for job $JOB_ID" >> ./repo/snyk_scan.log
+                    
+                    echo '```' >> ./repo/snyk_scan.log
+                    echo "" >> ./repo/snyk_scan.log
+                  fi
+                done
+              fi
             fi
+          fi
+          
+          # Method 2: Try to download artifacts from the PR CI run
+          echo "📦 Looking for security scan artifacts..."
+          
+          ARTIFACTS=$(gh api "/repos/$OWNER/$REPO/actions/runs?head_sha=$HEAD_SHA&per_page=5" \
+            --jq '.workflow_runs[0].id' 2>/dev/null || echo "")
+          
+          if [ -n "$ARTIFACTS" ] && [ "$ARTIFACTS" != "null" ]; then
+            # List artifacts from this run
+            ARTIFACT_LIST=$(gh api "/repos/$OWNER/$REPO/actions/runs/$ARTIFACTS/artifacts" \
+              --jq '.artifacts[] | select(.name | test("security|scan|snyk"; "i")) | {id, name}' 2>/dev/null || echo "")
+            
+            if [ -n "$ARTIFACT_LIST" ]; then
+              echo "" >> ./repo/snyk_scan.log
+              echo "## Artifacts Found" >> ./repo/snyk_scan.log
+              
+              ARTIFACT_IDS=$(echo "$ARTIFACT_LIST" | jq -r '.id' 2>/dev/null || echo "")
+              
+              for ARTIFACT_ID in $ARTIFACT_IDS; do
+                if [ -n "$ARTIFACT_ID" ] && [ "$ARTIFACT_ID" != "null" ]; then
+                  ARTIFACT_NAME=$(echo "$ARTIFACT_LIST" | jq -r "select(.id == $ARTIFACT_ID) | .name" 2>/dev/null || echo "artifact")
+                  echo "📥 Downloading artifact: $ARTIFACT_NAME..."
+                  
+                  # Download and extract artifact
+                  gh api "/repos/$OWNER/$REPO/actions/artifacts/$ARTIFACT_ID/zip" > artifact_$ARTIFACT_ID.zip 2>/dev/null || true
+                  
+                  if [ -f "artifact_$ARTIFACT_ID.zip" ]; then
+                    unzip -o "artifact_$ARTIFACT_ID.zip" -d "./artifact_$ARTIFACT_ID" 2>/dev/null || true
+                    
+                    # Append any log files found
+                    find "./artifact_$ARTIFACT_ID" -name "*.log" -o -name "*.sarif" -o -name "*.json" | while read -r file; do
+                      echo "### File: $(basename "$file")" >> ./repo/snyk_scan.log
+                      echo '```' >> ./repo/snyk_scan.log
+                      cat "$file" >> ./repo/snyk_scan.log 2>/dev/null || true
+                      echo '```' >> ./repo/snyk_scan.log
+                      echo "" >> ./repo/snyk_scan.log
+                    done
+                    
+                    rm -rf "artifact_$ARTIFACT_ID.zip" "./artifact_$ARTIFACT_ID"
+                  fi
+                fi
+              done
+            fi
+          fi
+          
+          # Method 3: Check PR checks for Snyk status
+          echo "🔎 Checking PR status checks..."
+          
+          PR_CHECKS=$(gh pr checks "$PR_NUMBER" --repo "$OWNER/$REPO" 2>/dev/null || echo "")
+          
+          if [ -n "$PR_CHECKS" ]; then
+            echo "" >> ./repo/snyk_scan.log
+            echo "## PR Check Status" >> ./repo/snyk_scan.log
+            echo '```' >> ./repo/snyk_scan.log
+            echo "$PR_CHECKS" >> ./repo/snyk_scan.log
+            echo '```' >> ./repo/snyk_scan.log
+          fi
+          
+          # Method 4: Get Snyk-specific comments on the PR (Snyk bot comments)
+          echo "💬 Fetching Snyk bot comments..."
+          
+          SNYK_COMMENTS=$(gh api "/repos/$OWNER/$REPO/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login | test("snyk"; "i")) | {author: .user.login, body: .body, created_at}' 2>/dev/null || echo "")
+          
+          if [ -n "$SNYK_COMMENTS" ]; then
+            echo "" >> ./repo/snyk_scan.log
+            echo "## Snyk Bot Comments" >> ./repo/snyk_scan.log
+            echo '```json' >> ./repo/snyk_scan.log
+            echo "$SNYK_COMMENTS" | jq -s '.' >> ./repo/snyk_scan.log
+            echo '```' >> ./repo/snyk_scan.log
+          fi
+          
+          # Verify we got some content
+          if [ -s ./repo/snyk_scan.log ] && [ $(wc -l < ./repo/snyk_scan.log) -gt 5 ]; then
+            echo "✅ Security scan logs collected successfully"
+            echo "has_security_logs=true" >> $GITHUB_OUTPUT
+            
+            # Show summary
+            echo "📊 Log file size: $(wc -c < ./repo/snyk_scan.log) bytes, $(wc -l < ./repo/snyk_scan.log) lines"
+            head -50 ./repo/snyk_scan.log
           else
+            echo "⚠️ No significant security logs found"
             echo "has_security_logs=false" >> $GITHUB_OUTPUT
           fi
 
@@ -249,30 +372,74 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           show_full_output: true
           prompt: |
-            You are an autonomous AI refactoring agent.
+            You are an autonomous AI refactoring and security remediation agent.
 
             ## Context
             - Working on PR #${{ needs.prepare.outputs.pr_number }} in ${{ needs.prepare.outputs.owner }}/${{ needs.prepare.outputs.repo }}
             - PR Title: "${{ needs.prepare.outputs.pr_title }}"
-            - Files available:
-              - refactor_tasks.json: Actionable inline review comments
-              - PR_conversations.json: Full PR conversation
-              - snyk_scan.log: Security scanner logs (if available)
+            - Security logs available: ${{ needs.prepare.outputs.has_security_logs }}
+            
+            ## Available Files
+            - `refactor_tasks.json`: Actionable inline review comments with file paths and line numbers
+            - `PR_conversations.json`: Full PR conversation including review summaries
+            - `snyk_scan.log`: **IMPORTANT** - Contains Snyk security scanner results including:
+              - Container/Dockerfile vulnerabilities
+              - Dependency vulnerabilities (npm, pip, etc.)
+              - Code vulnerabilities
+              - SARIF scan results
+              - PR check statuses
 
-            ## Goals
-            1. Read refactor_tasks.json and apply requested code changes
-            2. If snyk_scan.log exists, fix security vulnerabilities
-            3. Run tests if available (npm test, pytest, etc.)
-            4. Leave the repo in a buildable state
+            ## Goals (Priority Order)
+            
+            ### 1. Fix Security Vulnerabilities (if snyk_scan.log exists)
+            Read snyk_scan.log carefully and look for:
+            - **Dockerfile issues**: outdated base images, running as root, hardcoded secrets, insecure permissions
+            - **Dependency vulnerabilities**: upgrade vulnerable packages in package.json/requirements.txt
+            - **Code vulnerabilities**: fix any detected security issues in source code
+            
+            For Dockerfile fixes:
+            - Update base image to latest secure version (e.g., node:20-alpine instead of node:16)
+            - Add USER directive to run as non-root
+            - Remove hardcoded secrets/credentials
+            - Fix file permissions (no 777)
+            - Add HEALTHCHECK instruction
+            - Remove unnecessary EXPOSE ports
+            
+            ### 2. Apply PR Review Comments
+            Read refactor_tasks.json and apply each requested change:
+            - TypeScript type improvements
+            - Code style fixes
+            - Accessibility improvements
+            - Performance optimizations
+            
+            ### 3. Verify Changes
+            - Run linting if available (npm run lint)
+            - Run tests if available (npm test)
+            - Ensure the build still works (npm run build)
 
             ## Constraints
-            - Non-interactive environment
-            - DO NOT create git commits
+            - Non-interactive environment - no prompts or confirmations
+            - DO NOT create git commits - the workflow handles this
             - DO NOT use subshells like `bash -c '...'`
-            - Prefer minimal, targeted changes
+            - Prefer minimal, targeted changes that fix the specific issues
+            - If a file doesn't exist or code has changed, skip that task
 
             ## Output
-            Print JSON summary: {"applied_tasks": n, "skipped_tasks": n, "tests_passed": bool}
+            When finished, print a JSON summary:
+            ```json
+            {
+              "security_fixes": {
+                "dockerfile": ["list of fixes"],
+                "dependencies": ["list of upgrades"],
+                "code": ["list of fixes"]
+              },
+              "review_fixes": {
+                "applied": number,
+                "skipped": number
+              },
+              "tests_passed": boolean
+            }
+            ```
           
           claude_args: |
             --dangerously-skip-permissions
@@ -286,7 +453,7 @@ jobs:
           REPO: ${{ needs.prepare.outputs.repo }}
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
           BRANCH_NAME: ${{ steps.setup_branch.outputs.branch_name }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CLAUDE_PR_TOKEN }}
         run: |
           # Clean up generated files
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
@@ -377,51 +544,90 @@ jobs:
           warp_api_key: ${{ secrets.WARP_API_KEY }}
           cwd: .
           prompt: |
-            You are an autonomous AI refactoring agent running inside a GitHub Actions workflow.
+            You are an autonomous AI refactoring and security remediation agent running inside a GitHub Actions workflow.
 
-            Context:
-            - You are working on a pull request in a Git repository checked out in the current directory.
-            - All PR review and conversation comments (including authors, files, lines, threading, and statistics)
-              are available in PR_conversations.json. These comments MAY include higher-level refactor tasks that apply
-              to the whole PR.
-            - Active, human-authored inline review comments have been transformed into refactor_tasks.json, where each
-              entry is an actionable refactor task (file, line, root comment, short conversation, and HTML URL).
-            - Logs from the Snyk security scanner are available in snyk_scan.log, if the scanner ran.
+            ## Context
+            - Working on PR #${{ needs.prepare.outputs.pr_number }} in ${{ needs.prepare.outputs.owner }}/${{ needs.prepare.outputs.repo }}
+            - PR Title: "${{ needs.prepare.outputs.pr_title }}"
+            - Security logs available: ${{ needs.prepare.outputs.has_security_logs }}
+            
+            ## Available Files
+            - `refactor_tasks.json`: Actionable inline review comments with file paths and line numbers
+            - `PR_conversations.json`: Full PR conversation including review summaries  
+            - `snyk_scan.log`: **CRITICAL** - Contains comprehensive Snyk security scanner results:
+              - Workflow run logs with vulnerability details
+              - Container/Dockerfile scan results
+              - Dependency vulnerability reports
+              - SARIF format scan data
+              - PR check statuses
+              - Snyk bot comments with fix recommendations
 
-            Your goals:
-            1. Interpret every task in refactor_tasks.json and the underlying conversations in PR_conversations.json.
-               Be sure to identify tasks from both inline review comments and PR comments.
-            2. Check if the security scanner found any vulnerabilities or issues, in either this project or upstream projects.
-            3. For each task or security issue, apply concrete code changes in this repository that fully address the reviewer feedback or vulnerability.
-               If the issue is in a dependency, still address it in this repository to the best of your ability.
-            4. Favor minimal, targeted changes that clearly satisfy the comments without unnecessary churn.
-            5. When appropriate, run the project's tests or basic checks (e.g., `npm test`, `npm run test`, `pnpm test`,
-               `yarn test`, `go test ./...`, `pytest`, or similar) based on the tech stack you detect.
-            6. Leave the repository in a buildable, consistent state with all refactors applied on the current branch.
+            ## Goals (Priority Order)
 
-            Important constraints:
-            - You are running in a fully non-interactive environment.
-            - You MAY freely use tools to edit files and run shell commands, as long as they do not require asking the user for confirmation.
-            - You MAY run git status and git diff for context, but do NOT create or push branches yourself.
-            - DO NOT wrap commands in subshells - always prefer `ls && git status` to `bash -c 'ls && git status'`, for example.
-            - Do NOT amend existing commits; only change the working tree.
-            - Prefer editing only the files that are referenced by refactor_tasks.json unless broader changes are required.
-            - If a comment is outdated (the referenced code no longer exists), document why it cannot be applied and skip it.
+            ### 1. Fix Security Vulnerabilities (PRIORITY)
+            Read snyk_scan.log thoroughly and address ALL security issues found:
+            
+            **Dockerfile Security Fixes:**
+            - Update outdated base images (e.g., node:16 → node:20-alpine)
+            - Add `USER node` or similar to avoid running as root
+            - Remove hardcoded secrets (ENV with passwords, API keys)
+            - Fix insecure permissions (no chmod 777)
+            - Add HEALTHCHECK instruction
+            - Remove unnecessary EXPOSE ports (keep only required ones)
+            - Don't pipe curl/wget to bash
+            
+            **Dependency Security Fixes:**
+            - Update vulnerable packages in package.json/package-lock.json
+            - Update requirements.txt for Python projects
+            - Use `npm audit fix` or manual version bumps
+            
+            **Code Security Fixes:**
+            - Fix any code-level vulnerabilities reported
+            - Address injection risks, XSS, etc.
 
-            Required output:
-            - When you are finished, print a short JSON summary to stdout with this shape:
+            ### 2. Apply PR Review Comments
+            Process refactor_tasks.json and PR_conversations.json:
+            - Apply TypeScript improvements
+            - Fix code style issues
+            - Add accessibility attributes
+            - Performance optimizations
+            - Remove console.log statements
+            - Fix equality operators (== → ===)
 
-              {
-                "applied_tasks": number,
-                "skipped_tasks": number,
-                "skipped_reasons": [string],
-                "test_command": string | null,
-                "tests_passed": boolean | null
+            ### 3. Verify Changes
+            - Run `npm run lint` if available
+            - Run `npm test` if available
+            - Run `npm run build` to verify compilation
+
+            ## Constraints
+            - Fully non-interactive environment - no prompts
+            - DO NOT create git commits - workflow handles this
+            - DO NOT use subshells like `bash -c '...'`
+            - DO NOT amend existing commits
+            - Make minimal, targeted changes
+            - Skip tasks where referenced code no longer exists
+
+            ## Required Output
+            Print JSON summary when finished:
+            ```json
+            {
+              "security_fixes": {
+                "dockerfile": ["list of applied fixes"],
+                "dependencies": ["list of upgraded packages"],
+                "code": ["list of code fixes"]
+              },
+              "review_fixes": {
+                "applied": number,
+                "skipped": number,
+                "skipped_reasons": ["reasons"]
+              },
+              "verification": {
+                "lint_passed": boolean,
+                "tests_passed": boolean,
+                "build_passed": boolean
               }
-
-            Notes:
-            - Focus your effort on applying high-quality refactors; the workflow will handle committing and opening a PR.
-            - Keep any additional logging minimal and human-readable.
+            }
+            ```
 
       - name: Save Warp Summary
         run: |
@@ -436,7 +642,7 @@ jobs:
           REPO: ${{ needs.prepare.outputs.repo }}
           HEAD_REF: ${{ needs.prepare.outputs.head_ref }}
           BRANCH_NAME: ${{ steps.setup_branch.outputs.branch_name }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CLAUDE_PR_TOKEN }}
         run: |
           rm -f refactor_tasks.json PR_conversations.json snyk_scan.log
           
