@@ -48,7 +48,7 @@ export default function NotificationsPage() {
         setNotifications(JSON.parse(stored));
       }
     } catch (error) {
-      console.log('Failed to load notifications'); // Debug log left in
+      // Silently fail - notifications are not critical
     }
   };
 
@@ -59,7 +59,7 @@ export default function NotificationsPage() {
         setSettings(JSON.parse(stored));
       }
     } catch (error) {
-      console.log('Failed to load settings'); // Debug log left in
+      // Silently fail - settings will use defaults
     }
   };
 
@@ -86,12 +86,11 @@ export default function NotificationsPage() {
     saveNotifications(updated);
   };
 
-  // Toggle setting - no persistence
+  // Toggle setting with persistence
   const toggleSetting = (key: keyof NotificationSettings) => {
     const updated = { ...settings, [key]: !settings[key] };
     setSettings(updated);
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
-    console.log('Setting toggled:', key); // Debug log left in
   };
 
   return (
@@ -146,9 +145,9 @@ export default function NotificationsPage() {
             </div>
           </Card>
 
-          {/* Notifications list - no pagination */}
+          {/* Notifications list */}
           <div className="space-y-3">
-            {filteredNotifications.length == 0 ? ( // Using == instead of ===
+            {filteredNotifications.length === 0 ? (
               <Card>
                 <div className="text-center py-8 text-gray-400">
                   <Bell className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -160,13 +159,13 @@ export default function NotificationsPage() {
                 <Card key={notification.id}>
                   <div className="flex items-start gap-4">
                     <div className={`p-3 rounded-lg ${
-                      notification.priority == 'high' ? 'bg-red-500/20' : // Using ==
-                      notification.priority == 'medium' ? 'bg-yellow-500/20' :
+                      notification.priority === 'high' ? 'bg-red-500/20' :
+                      notification.priority === 'medium' ? 'bg-yellow-500/20' :
                       'bg-gray-700'
                     }`}>
                       <Bell className={`w-5 h-5 ${
-                        notification.priority == 'high' ? 'text-red-400' :
-                        notification.priority == 'medium' ? 'text-yellow-400' :
+                        notification.priority === 'high' ? 'text-red-400' :
+                        notification.priority === 'medium' ? 'text-yellow-400' :
                         'text-gray-400'
                       }`} />
                     </div>
@@ -182,9 +181,9 @@ export default function NotificationsPage() {
                       <p className="text-sm text-gray-400 mt-1">{notification.message}</p>
                       <div className="flex items-center gap-2 mt-2">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          notification.type == 'flight' ? 'bg-blue-500/20 text-blue-400' :
-                          notification.type == 'market' ? 'bg-green-500/20 text-green-400' :
-                          notification.type == 'weather' ? 'bg-purple-500/20 text-purple-400' :
+                          notification.type === 'flight' ? 'bg-blue-500/20 text-blue-400' :
+                          notification.type === 'market' ? 'bg-green-500/20 text-green-400' :
+                          notification.type === 'weather' ? 'bg-purple-500/20 text-purple-400' :
                           'bg-orange-500/20 text-orange-400'
                         }`}>
                           {notification.type}
@@ -221,15 +220,18 @@ export default function NotificationsPage() {
             <div className="space-y-4">
               {(Object.keys(settings) as Array<keyof NotificationSettings>).map((key) => (
                 <div key={key} className="flex items-center justify-between">
-                  <span className="text-gray-300 capitalize">
+                  <span className="text-gray-300 capitalize" id={`label-${key}`}>
                     {key.replace(/([A-Z])/g, ' $1').trim()}
                   </span>
-                  {/* Custom toggle - no proper accessibility */}
+                  {/* Custom toggle with accessibility */}
                   <button
                     onClick={() => toggleSetting(key)}
                     className={`w-12 h-6 rounded-full transition-colors ${
                       settings[key] ? 'bg-blue-600' : 'bg-gray-600'
                     }`}
+                    role="switch"
+                    aria-checked={settings[key]}
+                    aria-labelledby={`label-${key}`}
                   >
                     <div className={`w-5 h-5 bg-white rounded-full transform transition-transform ${
                       settings[key] ? 'translate-x-6' : 'translate-x-0.5'
@@ -254,7 +256,7 @@ export default function NotificationsPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">High Priority</span>
-                <span className="text-red-400">{notifications.filter(n => n.priority == 'high').length}</span>
+                <span className="text-red-400">{notifications.filter(n => n.priority === 'high').length}</span>
               </div>
             </div>
           </Card>

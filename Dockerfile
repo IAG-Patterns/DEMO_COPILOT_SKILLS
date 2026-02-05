@@ -1,46 +1,43 @@
-# INTENTIONALLY VULNERABLE DOCKERFILE FOR SECURITY SCANNING DEMO
-# This Dockerfile contains several security issues that Snyk will detect
+# Secure Dockerfile for Next.js application
+# Security fixes applied by automated remediation
 
-# Using an older Node.js 18 version (compatible with Next.js >= 18.17.0)
-# Snyk should still detect some vulnerabilities in this version
-FROM node:18.19.0-alpine
-
-# Running as root (security issue)
-# Snyk: CIS-DI-0001 - Container should not run as root
-
-# Hardcoded secrets (security issue)
-ENV DATABASE_PASSWORD=admin123
-ENV API_SECRET_KEY=super_secret_key_12345
-ENV JWT_SECRET=mysecretjwt
+# Use current LTS Node.js version with minimal Alpine base
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app
 
-# Install curl without verification (security issue)
-RUN apk add --no-cache curl wget bash
-
-# Download a script and execute it directly (security issue)
-RUN curl -fsSL https://example.com/install.sh | bash || true
+# Install only necessary packages (curl for healthcheck)
+RUN apk add --no-cache curl
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies including dev dependencies in production (security issue)
-RUN npm install --legacy-peer-deps
+# Install production dependencies only
+RUN npm ci --only=production --legacy-peer-deps
 
-# Copy all files including potentially sensitive ones (security issue)
+# Copy application files
 COPY . .
 
-# Set insecure file permissions (security issue)
-RUN chmod -R 777 /app
+# Set secure file permissions (owner read/write/execute, group/others read/execute)
+RUN chmod -R 755 /app
 
 # Build the Next.js application
 RUN npm run build
 
-# Expose multiple unnecessary ports (security issue)
-EXPOSE 3000 22 80 443
+# Create non-root user and switch to it
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001 -G nodejs && \
+    chown -R nextjs:nodejs /app
 
-# No health check defined (best practice issue)
+USER nextjs
 
-# Run as root user (should use non-root user)
+# Expose only the required port
+EXPOSE 3000
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/ || exit 1
+
+# Start the application
 CMD ["npm", "start"]
