@@ -219,7 +219,7 @@ export default function NotificationsPage() {
               Notification Settings
             </h3>
             <div className="space-y-4">
-              {Object.entries(settings).map(([key, value]) => (
+              {(Object.keys(settings) as Array<keyof NotificationSettings>).map((key) => (
                 <div key={key} className="flex items-center justify-between">
                   <span className="text-gray-300 capitalize">
                     {key.replace(/([A-Z])/g, ' $1').trim()}
@@ -228,11 +228,11 @@ export default function NotificationsPage() {
                   <button
                     onClick={() => toggleSetting(key)}
                     className={`w-12 h-6 rounded-full transition-colors ${
-                      value ? 'bg-blue-600' : 'bg-gray-600'
+                      settings[key] ? 'bg-blue-600' : 'bg-gray-600'
                     }`}
                   >
                     <div className={`w-5 h-5 bg-white rounded-full transform transition-transform ${
-                      value ? 'translate-x-6' : 'translate-x-0.5'
+                      settings[key] ? 'translate-x-6' : 'translate-x-0.5'
                     }`} />
                   </button>
                 </div>
