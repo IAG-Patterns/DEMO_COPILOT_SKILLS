@@ -56,9 +56,21 @@ jobs:
       # Security Scanning with Snyk
       #########################################
       
+      - name: Check Snyk Token
+        id: check_snyk
+        run: |
+          if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
+            echo "has_token=true" >> $GITHUB_OUTPUT
+            echo "✅ SNYK_TOKEN is configured"
+          else
+            echo "has_token=false" >> $GITHUB_OUTPUT
+            echo "⚠️ SNYK_TOKEN not configured - skipping Snyk scans"
+          fi
+
       # Scan Docker image for vulnerabilities
       - name: Snyk Container Scan
         id: snyk_container
+        if: steps.check_snyk.outputs.has_token == 'true'
         uses: snyk/actions/docker@master
         with:
           command: test
@@ -66,6 +78,7 @@ jobs:
           args: >-
             --severity-threshold=medium
             --file=Dockerfile
+            --json-file-output=snyk-container.json
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -73,12 +86,13 @@ jobs:
       # Scan source code for vulnerabilities
       - name: Snyk Code Scan
         id: snyk_code
+        if: steps.check_snyk.outputs.has_token == 'true'
         uses: snyk/actions/node@master
         with:
-          command: test
+          command: code test
           args: >-
             --severity-threshold=medium
-            --all-projects
+            --json-file-output=snyk-code.json
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -86,18 +100,20 @@ jobs:
       # Scan dependencies for vulnerabilities  
       - name: Snyk Open Source Scan
         id: snyk_deps
+        if: steps.check_snyk.outputs.has_token == 'true'
         uses: snyk/actions/node@master
         with:
           command: test
           args: >-
             --severity-threshold=low
+            --json-file-output=snyk-deps.json
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
 
       # Upload Snyk results to GitHub Security tab
       - name: Upload Snyk Container SARIF
-        if: always()
+        if: steps.check_snyk.outputs.has_token == 'true' && always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk.sarif
@@ -112,6 +128,25 @@ jobs:
         run: |
           echo "## 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          
+          HAS_TOKEN="${{ steps.check_snyk.outputs.has_token }}"
+          
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "### ⚠️ Snyk Token Not Configured" >> $GITHUB_STEP_SUMMARY
+            echo "Security scans were skipped because \`SNYK_TOKEN\` secret is not set." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "To enable security scanning:" >> $GITHUB_STEP_SUMMARY
+            echo "1. Get your token from https://app.snyk.io/account" >> $GITHUB_STEP_SUMMARY
+            echo "2. Add \`SNYK_TOKEN\` to repository secrets" >> $GITHUB_STEP_SUMMARY
+            echo "has_container_vulns=false" >> $GITHUB_OUTPUT
+            echo "has_code_vulns=false" >> $GITHUB_OUTPUT
+            echo "has_dep_vulns=false" >> $GITHUB_OUTPUT
+            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+            echo "snyk_skipped=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "snyk_skipped=false" >> $GITHUB_OUTPUT
           
           # Container scan results
           if [ "${{ steps.snyk_container.outcome }}" == "failure" ]; then
@@ -166,20 +201,42 @@ jobs:
         run: |
           mkdir -p scan-results
           
+          if [ "${{ steps.check_snyk.outputs.has_token }}" != "true" ]; then
+            echo "Snyk scans skipped - SNYK_TOKEN not configured" > scan-results/snyk_scan.log
+            exit 0
+          fi
+          
           # Save container scan output
           echo "=== Snyk Container Scan ===" > scan-results/snyk_scan.log
           echo "Outcome: ${{ steps.snyk_container.outcome }}" >> scan-results/snyk_scan.log
           echo "Conclusion: ${{ steps.snyk_container.conclusion }}" >> scan-results/snyk_scan.log
+          
+          # Include JSON results if available
+          if [ -f snyk-container.json ]; then
+            echo "" >> scan-results/snyk_scan.log
+            echo "Container Scan Details:" >> scan-results/snyk_scan.log
+            cat snyk-container.json >> scan-results/snyk_scan.log
+          fi
           echo "" >> scan-results/snyk_scan.log
           
           # Save code scan output
           echo "=== Snyk Code Scan ===" >> scan-results/snyk_scan.log
           echo "Outcome: ${{ steps.snyk_code.outcome }}" >> scan-results/snyk_scan.log
+          if [ -f snyk-code.json ]; then
+            echo "" >> scan-results/snyk_scan.log
+            echo "Code Scan Details:" >> scan-results/snyk_scan.log
+            cat snyk-code.json >> scan-results/snyk_scan.log
+          fi
           echo "" >> scan-results/snyk_scan.log
           
           # Save dependency scan output
           echo "=== Snyk Dependency Scan ===" >> scan-results/snyk_scan.log
           echo "Outcome: ${{ steps.snyk_deps.outcome }}" >> scan-results/snyk_scan.log
+          if [ -f snyk-deps.json ]; then
+            echo "" >> scan-results/snyk_scan.log
+            echo "Dependency Scan Details:" >> scan-results/snyk_scan.log
+            cat snyk-deps.json >> scan-results/snyk_scan.log
+          fi
           
           # Copy any SARIF files
           cp snyk.sarif scan-results/ 2>/dev/null || true
@@ -200,6 +257,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const snykSkipped = '${{ steps.snyk_analysis.outputs.snyk_skipped }}' === 'true';
             const hasVulns = '${{ steps.snyk_analysis.outputs.has_vulnerabilities }}' === 'true';
             const hasContainerVulns = '${{ steps.snyk_analysis.outputs.has_container_vulns }}' === 'true';
             const hasCodeVulns = '${{ steps.snyk_analysis.outputs.has_code_vulns }}' === 'true';
@@ -207,7 +265,13 @@ jobs:
             
             let body = '## 🔒 Security Scan Report\n\n';
             
-            if (hasVulns) {
+            if (snykSkipped) {
+              body += '⚠️ **Security scans were skipped**\n\n';
+              body += 'The `SNYK_TOKEN` secret is not configured.\n\n';
+              body += 'To enable security scanning:\n';
+              body += '1. Get your token from https://app.snyk.io/account\n';
+              body += '2. Add `SNYK_TOKEN` to [repository secrets](../../settings/secrets/actions)\n';
+            } else if (hasVulns) {
               body += '⚠️ **Security vulnerabilities were detected in this PR.**\n\n';
               body += '| Scan Type | Status |\n';
               body += '|-----------|--------|\n';
