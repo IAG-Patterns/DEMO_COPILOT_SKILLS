@@ -1,46 +1,41 @@
-# INTENTIONALLY VULNERABLE DOCKERFILE FOR SECURITY SCANNING DEMO
-# This Dockerfile contains several security issues that Snyk will detect
+# Production Dockerfile with security best practices
+# Fixed security issues identified by Snyk scan
 
-# Using an older Node.js 18 version (compatible with Next.js >= 18.17.0)
-# Snyk should still detect some vulnerabilities in this version
-FROM node:18.19.0-alpine
-
-# Running as root (security issue)
-# Snyk: CIS-DI-0001 - Container should not run as root
-
-# Hardcoded secrets (security issue)
-ENV DATABASE_PASSWORD=admin123
-ENV API_SECRET_KEY=super_secret_key_12345
-ENV JWT_SECRET=mysecretjwt
+# Use Node.js 20.20.0 or later to fix vulnerabilities
+FROM node:20.20.0-alpine
 
 # Set working directory
 WORKDIR /app
 
-# Install curl without verification (security issue)
-RUN apk add --no-cache curl wget bash
-
-# Download a script and execute it directly (security issue)
-RUN curl -fsSL https://example.com/install.sh | bash || true
+# Install only necessary packages
+RUN apk add --no-cache curl
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies including dev dependencies in production (security issue)
-RUN npm install --legacy-peer-deps
+# Install production dependencies only
+RUN npm ci --only=production --legacy-peer-deps
 
-# Copy all files including potentially sensitive ones (security issue)
+# Copy application files
 COPY . .
-
-# Set insecure file permissions (security issue)
-RUN chmod -R 777 /app
 
 # Build the Next.js application
 RUN npm run build
 
-# Expose multiple unnecessary ports (security issue)
-EXPOSE 3000 22 80 443
+# Create non-root user and set proper permissions
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001 && \
+    chown -R nextjs:nodejs /app
 
-# No health check defined (best practice issue)
+# Switch to non-root user
+USER nextjs
 
-# Run as root user (should use non-root user)
+# Expose only the necessary port
+EXPOSE 3000
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health || exit 1
+
+# Run the application
 CMD ["npm", "start"]
