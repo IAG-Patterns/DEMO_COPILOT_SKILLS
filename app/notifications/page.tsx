@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card } from '@/components/Card';
+import Card from '@/components/Card';
 import { Bell, Settings, Trash2, Check, Filter } from 'lucide-react';
 
 // Missing interface definitions - using any types
