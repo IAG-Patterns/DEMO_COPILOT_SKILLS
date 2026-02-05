@@ -76,15 +76,23 @@ jobs:
       # Scan Docker image for vulnerabilities
       - name: Snyk Container Scan
         id: snyk_container
-        if: steps.check_snyk.outputs.has_token == 'true'
+        if: steps.check_snyk.outputs.has_token == 'true' && steps.docker_build.outcome == 'success'
         uses: snyk/actions/docker@master
         with:
-          command: test
           image: ${{ env.DOCKER_IMAGE_TAG }}
-          args: >-
-            --severity-threshold=medium
-            --file=Dockerfile
-            --json-file-output=snyk-container.json
+          args: --severity-threshold=medium --file=Dockerfile
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      # Save container scan output to JSON
+      - name: Save Container Scan JSON
+        if: always() && steps.check_snyk.outputs.has_token == 'true' && steps.docker_build.outcome == 'success'
+        run: |
+          snyk container test "${{ env.DOCKER_IMAGE_TAG }}" \
+            --severity-threshold=medium \
+            --file=Dockerfile \
+            --json > snyk-container.json 2>&1 || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -96,9 +104,16 @@ jobs:
         uses: snyk/actions/node@master
         with:
           command: test
-          args: >-
-            --severity-threshold=low
-            --json-file-output=snyk-deps.json
+          args: --severity-threshold=low
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      # Save dependency scan output to JSON
+      - name: Save Dependency Scan JSON
+        if: always() && steps.check_snyk.outputs.has_token == 'true'
+        run: |
+          snyk test --severity-threshold=low --json > snyk-deps.json 2>&1 || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -195,30 +210,76 @@ jobs:
             exit 0
           fi
           
-          # Save container scan output
-          echo "=== Snyk Container Scan ===" > scan-results/snyk_scan.log
-          echo "Outcome: ${{ steps.snyk_container.outcome }}" >> scan-results/snyk_scan.log
-          echo "Conclusion: ${{ steps.snyk_container.conclusion }}" >> scan-results/snyk_scan.log
+          # Create comprehensive log file
+          echo "# Snyk Security Scan Results" > scan-results/snyk_scan.log
+          echo "# PR: #${{ github.event.pull_request.number }}" >> scan-results/snyk_scan.log
+          echo "# Commit: ${{ github.sha }}" >> scan-results/snyk_scan.log
+          echo "# Scanned: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> scan-results/snyk_scan.log
+          echo "" >> scan-results/snyk_scan.log
           
-          # Include JSON results if available
+          # Container scan results
+          echo "## Container Scan (Dockerfile)" >> scan-results/snyk_scan.log
+          echo "Status: ${{ steps.snyk_container.outcome }}" >> scan-results/snyk_scan.log
+          echo "" >> scan-results/snyk_scan.log
+          
           if [ -f snyk-container.json ]; then
+            echo "### Vulnerabilities Found:" >> scan-results/snyk_scan.log
+            # Extract vulnerability summary from JSON
+            jq -r '
+              if type == "object" and has("vulnerabilities") then
+                .vulnerabilities | group_by(.severity) | map({
+                  severity: .[0].severity,
+                  count: length,
+                  items: [.[] | {name: .name, version: .version, title: .title, fixedIn: .fixedIn[0]}][:5]
+                }) | .[] | 
+                "#### \(.severity | ascii_upcase) (\(.count) found):\n" +
+                (.items | map("- \(.name)@\(.version): \(.title)" + if .fixedIn then " (fix: \(.fixedIn))" else "" end) | join("\n"))
+              else
+                "No vulnerabilities data available"
+              end
+            ' snyk-container.json >> scan-results/snyk_scan.log 2>/dev/null || echo "Could not parse container scan results" >> scan-results/snyk_scan.log
             echo "" >> scan-results/snyk_scan.log
-            echo "Container Scan Details:" >> scan-results/snyk_scan.log
+            echo "### Full Container Scan JSON:" >> scan-results/snyk_scan.log
             cat snyk-container.json >> scan-results/snyk_scan.log
+          else
+            echo "No container scan results available" >> scan-results/snyk_scan.log
           fi
           echo "" >> scan-results/snyk_scan.log
           
-          # Save dependency scan output
-          echo "=== Snyk Dependency Scan ===" >> scan-results/snyk_scan.log
-          echo "Outcome: ${{ steps.snyk_deps.outcome }}" >> scan-results/snyk_scan.log
+          # Dependency scan results
+          echo "## Dependency Scan (npm packages)" >> scan-results/snyk_scan.log
+          echo "Status: ${{ steps.snyk_deps.outcome }}" >> scan-results/snyk_scan.log
+          echo "" >> scan-results/snyk_scan.log
+          
           if [ -f snyk-deps.json ]; then
+            echo "### Vulnerabilities Found:" >> scan-results/snyk_scan.log
+            jq -r '
+              if type == "object" and has("vulnerabilities") then
+                .vulnerabilities | group_by(.severity) | map({
+                  severity: .[0].severity,
+                  count: length,
+                  items: [.[] | {name: .name, version: .version, title: .title, fixedIn: .fixedIn[0]}][:5]
+                }) | .[] | 
+                "#### \(.severity | ascii_upcase) (\(.count) found):\n" +
+                (.items | map("- \(.name)@\(.version): \(.title)" + if .fixedIn then " (fix: \(.fixedIn))" else "" end) | join("\n"))
+              else
+                "No vulnerabilities data available"
+              end
+            ' snyk-deps.json >> scan-results/snyk_scan.log 2>/dev/null || echo "Could not parse dependency scan results" >> scan-results/snyk_scan.log
             echo "" >> scan-results/snyk_scan.log
-            echo "Dependency Scan Details:" >> scan-results/snyk_scan.log
+            echo "### Full Dependency Scan JSON:" >> scan-results/snyk_scan.log
             cat snyk-deps.json >> scan-results/snyk_scan.log
+          else
+            echo "No dependency scan results available" >> scan-results/snyk_scan.log
           fi
           
-          # Copy any SARIF files
+          # Copy SARIF for GitHub Security tab
           cp snyk.sarif scan-results/ 2>/dev/null || true
+          
+          # Show summary
+          echo ""
+          echo "📊 Scan log created: $(wc -c < scan-results/snyk_scan.log) bytes"
+          head -30 scan-results/snyk_scan.log
 
       - name: Upload Scan Results
         if: always()
