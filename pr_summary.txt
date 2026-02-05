@@ -1,0 +1,13 @@
+### 📁 Files Modified
+- `Dockerfile`
+- `app/notifications/page.tsx`
+- `components/NotificationCenter.tsx`
+- `next-env.d.ts`
+- `package-lock.json`
+- `package.json`
+- `tsconfig.json`
+
+### 📊 Change Statistics
+- **+1191** insertions, **-583** deletions
+
+
