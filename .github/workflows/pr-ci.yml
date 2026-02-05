@@ -62,8 +62,6 @@ jobs:
       - name: Check Snyk Token
         id: check_snyk
         if: always()
-      - name: Check Snyk Token
-        id: check_snyk
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
