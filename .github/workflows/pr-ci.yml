@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
   pull-requests: write
 
 concurrency:
@@ -116,14 +115,6 @@ jobs:
           snyk test --severity-threshold=low --json > snyk-deps.json 2>&1 || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        continue-on-error: true
-
-      # Upload Snyk results to GitHub Security tab
-      - name: Upload Snyk Container SARIF
-        if: always() && steps.check_snyk.outputs.has_token == 'true'
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: snyk.sarif
         continue-on-error: true
 
       #########################################
@@ -273,9 +264,6 @@ jobs:
             echo "No dependency scan results available" >> scan-results/snyk_scan.log
           fi
           
-          # Copy SARIF for GitHub Security tab
-          cp snyk.sarif scan-results/ 2>/dev/null || true
-          
           # Show summary
           echo ""
           echo "📊 Scan log created: $(wc -c < scan-results/snyk_scan.log) bytes"
@@ -355,3 +343,20 @@ jobs:
                 body: body
               });
             }
+
+      #########################################
+      # Fail CI if vulnerabilities found
+      #########################################
+      - name: Fail if vulnerabilities found
+        if: always()
+        run: |
+          if [ "${{ steps.snyk_analysis.outputs.has_vulnerabilities }}" == "true" ]; then
+            echo "❌ Security vulnerabilities were detected!"
+            echo ""
+            echo "Container vulnerabilities: ${{ steps.snyk_analysis.outputs.has_container_vulns }}"
+            echo "Dependency vulnerabilities: ${{ steps.snyk_analysis.outputs.has_dep_vulns }}"
+            echo ""
+            echo "Please fix the vulnerabilities or run the AI Autofix workflow."
+            exit 1
+          fi
+          echo "✅ No security vulnerabilities detected"
