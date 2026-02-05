@@ -3,90 +3,76 @@
 import { useState, useEffect } from 'react';
 import { Bell, X, AlertTriangle, TrendingUp, Plane, Cloud } from 'lucide-react';
 
-// TODO: Add proper types
+// Notification type definition
+interface Notification {
+  id: number;
+  type: 'flight' | 'market' | 'weather' | 'currency';
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  priority: 'high' | 'medium' | 'low';
+}
+
+const STORAGE_KEY = 'dashboard_notifications';
+
 const NotificationCenter = () => {
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Fetch notifications - missing error handling
+  // Load notifications from localStorage on mount
   useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
+    loadNotifications();
   }, []);
 
-  const fetchNotifications = async () => {
-    // Simulated API call - hardcoded data
-    const mockNotifications = [
-      {
-        id: 1,
-        type: 'flight',
-        title: 'Flight Delay Alert',
-        message: 'Flight BA123 to London delayed by 45 minutes',
-        timestamp: new Date().toISOString(),
-        read: false,
-        priority: 'high'
-      },
-      {
-        id: 2,
-        type: 'market',
-        title: 'Bitcoin Price Alert',
-        message: 'BTC crossed $50,000 threshold',
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        read: false,
-        priority: 'medium'
-      },
-      {
-        id: 3,
-        type: 'weather',
-        title: 'Weather Warning',
-        message: 'Severe weather expected at JFK Airport',
-        timestamp: new Date(Date.now() - 7200000).toISOString(),
-        read: true,
-        priority: 'high'
-      },
-      {
-        id: 4,
-        type: 'currency',
-        title: 'EUR/USD Rate Change',
-        message: 'EUR/USD dropped below 1.08',
-        timestamp: new Date(Date.now() - 86400000).toISOString(),
-        read: true,
-        priority: 'low'
+  // Update unread count when notifications change
+  useEffect(() => {
+    setUnreadCount(notifications.filter(n => !n.read).length);
+  }, [notifications]);
+
+  const loadNotifications = () => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Notification[];
+        setNotifications(parsed);
+        console.log('Loaded notifications from storage'); // Left console.log
       }
-    ];
-    
-    console.log('Fetching notifications...', mockNotifications); // Left console.log
-    setNotifications(mockNotifications);
-    setUnreadCount(mockNotifications.filter(n => !n.read).length);
+    } catch (error) {
+      console.log('Failed to load notifications'); // Left console.log
+    }
+  };
+
+  const saveNotifications = (notifs: Notification[]) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifs));
   };
 
   // Mark as read - no optimistic update
-  const markAsRead = (id) => {
+  const markAsRead = (id: number) => {
     const updated = notifications.map(n => 
       n.id == id ? { ...n, read: true } : n // Using == instead of ===
     );
     setNotifications(updated);
-    setUnreadCount(updated.filter(n => !n.read).length);
+    saveNotifications(updated);
   };
 
   // Delete notification - no confirmation
-  const deleteNotification = (id) => {
+  const deleteNotification = (id: number) => {
     const updated = notifications.filter(n => n.id != id); // Using != instead of !==
     setNotifications(updated);
-    setUnreadCount(updated.filter(n => !n.read).length);
+    saveNotifications(updated);
   };
 
   // Mark all as read
   const markAllAsRead = () => {
     const updated = notifications.map(n => ({ ...n, read: true }));
     setNotifications(updated);
-    setUnreadCount(0);
+    saveNotifications(updated);
   };
 
   // Get icon based on type - could be memoized
-  const getIcon = (type) => {
+  const getIcon = (type: string) => {
     switch(type) {
       case 'flight': return <Plane className="w-4 h-4" />;
       case 'market': return <TrendingUp className="w-4 h-4" />;
@@ -96,7 +82,7 @@ const NotificationCenter = () => {
   };
 
   // Get priority color - inline styles instead of Tailwind classes
-  const getPriorityStyle = (priority) => {
+  const getPriorityStyle = (priority: string) => {
     if (priority === 'high') {
       return { backgroundColor: '#fee2e2', borderColor: '#ef4444' };
     } else if (priority === 'medium') {
@@ -107,10 +93,10 @@ const NotificationCenter = () => {
   };
 
   // Format time - no localization
-  const formatTime = (timestamp) => {
+  const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
-    const diff = now - date;
+    const diff = now.getTime() - date.getTime();
     
     if (diff < 60000) return 'Just now';
     if (diff < 3600000) return Math.floor(diff / 60000) + ' minutes ago';

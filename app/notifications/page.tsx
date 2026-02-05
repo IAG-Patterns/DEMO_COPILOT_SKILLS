@@ -4,40 +4,68 @@ import { useState, useEffect } from 'react';
 import Card from '@/components/Card';
 import { Bell, Settings, Trash2, Check, Filter } from 'lucide-react';
 
-// Missing interface definitions - using any types
+// Notification type definition
+interface Notification {
+  id: number;
+  type: 'flight' | 'market' | 'weather' | 'currency';
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  priority: 'high' | 'medium' | 'low';
+}
+
+interface NotificationSettings {
+  flightAlerts: boolean;
+  priceAlerts: boolean;
+  weatherAlerts: boolean;
+  emailNotifications: boolean;
+}
+
+const STORAGE_KEY = 'dashboard_notifications';
+const SETTINGS_KEY = 'notification_settings';
+
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState('all');
-  const [settings, setSettings] = useState<any>({
+  const [settings, setSettings] = useState<NotificationSettings>({
     flightAlerts: true,
     priceAlerts: true,
     weatherAlerts: true,
     emailNotifications: false
   });
 
-  // No loading state
+  // Load notifications from localStorage
   useEffect(() => {
-    // Simulated fetch - no error handling
-    const data = generateMockNotifications();
-    setNotifications(data);
+    loadNotifications();
+    loadSettings();
   }, []);
 
-  // Generate mock data - inefficient, regenerates on every call
-  function generateMockNotifications() {
-    var notifications = []; // Using var instead of const
-    for (let i = 0; i < 20; i++) {
-      notifications.push({
-        id: i + 1,
-        type: ['flight', 'market', 'weather', 'currency'][Math.floor(Math.random() * 4)],
-        title: `Notification ${i + 1}`,
-        message: `This is notification message number ${i + 1}. It contains important information.`,
-        timestamp: new Date(Date.now() - Math.random() * 604800000).toISOString(),
-        read: Math.random() > 0.5,
-        priority: ['high', 'medium', 'low'][Math.floor(Math.random() * 3)]
-      });
+  const loadNotifications = () => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        setNotifications(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.log('Failed to load notifications'); // Debug log left in
     }
-    return notifications;
-  }
+  };
+
+  const loadSettings = () => {
+    try {
+      const stored = localStorage.getItem(SETTINGS_KEY);
+      if (stored) {
+        setSettings(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.log('Failed to load settings'); // Debug log left in
+    }
+  };
+
+  const saveNotifications = (notifs: Notification[]) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(notifs));
+  };
 
   // Filter notifications - no memoization
   const filteredNotifications = notifications.filter(n => {
@@ -49,15 +77,20 @@ export default function NotificationsPage() {
   // Bulk actions - missing confirmation dialogs
   const deleteAll = () => {
     setNotifications([]);
+    saveNotifications([]);
   };
 
   const markAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+    const updated = notifications.map(n => ({ ...n, read: true }));
+    setNotifications(updated);
+    saveNotifications(updated);
   };
 
   // Toggle setting - no persistence
-  const toggleSetting = (key: string) => {
-    setSettings({ ...settings, [key]: !settings[key] });
+  const toggleSetting = (key: keyof NotificationSettings) => {
+    const updated = { ...settings, [key]: !settings[key] };
+    setSettings(updated);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
     console.log('Setting toggled:', key); // Debug log left in
   };
 
