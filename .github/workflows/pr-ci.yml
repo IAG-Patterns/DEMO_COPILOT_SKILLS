@@ -1,0 +1,250 @@
+name: PR CI - Build & Security Scan
+
+on:
+  pull_request:
+    branches: [master, main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+concurrency:
+  group: pr-ci-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_IMAGE_TAG: demo-copilot-skills:pr-${{ github.event.pull_request.number }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Run linting
+        run: npm run lint || true
+        continue-on-error: true
+
+      - name: Build application
+        run: npm run build
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: ${{ env.DOCKER_IMAGE_TAG }}
+
+      #########################################
+      # Security Scanning with Snyk
+      #########################################
+      
+      # Scan Docker image for vulnerabilities
+      - name: Snyk Container Scan
+        id: snyk_container
+        uses: snyk/actions/docker@master
+        with:
+          command: test
+          image: ${{ env.DOCKER_IMAGE_TAG }}
+          args: >-
+            --severity-threshold=medium
+            --file=Dockerfile
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      # Scan source code for vulnerabilities
+      - name: Snyk Code Scan
+        id: snyk_code
+        uses: snyk/actions/node@master
+        with:
+          command: test
+          args: >-
+            --severity-threshold=medium
+            --all-projects
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      # Scan dependencies for vulnerabilities  
+      - name: Snyk Open Source Scan
+        id: snyk_deps
+        uses: snyk/actions/node@master
+        with:
+          command: test
+          args: >-
+            --severity-threshold=low
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      # Upload Snyk results to GitHub Security tab
+      - name: Upload Snyk Container SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk.sarif
+        continue-on-error: true
+
+      #########################################
+      # Check Snyk Results & Generate Report
+      #########################################
+      - name: Analyze Snyk Results
+        id: snyk_analysis
+        if: always()
+        run: |
+          echo "## 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Container scan results
+          if [ "${{ steps.snyk_container.outcome }}" == "failure" ]; then
+            echo "### ⚠️ Container Vulnerabilities Found" >> $GITHUB_STEP_SUMMARY
+            echo "The Docker image contains security vulnerabilities." >> $GITHUB_STEP_SUMMARY
+            echo "has_container_vulns=true" >> $GITHUB_OUTPUT
+          else
+            echo "### ✅ Container Scan Passed" >> $GITHUB_STEP_SUMMARY
+            echo "has_container_vulns=false" >> $GITHUB_OUTPUT
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Code scan results
+          if [ "${{ steps.snyk_code.outcome }}" == "failure" ]; then
+            echo "### ⚠️ Code Vulnerabilities Found" >> $GITHUB_STEP_SUMMARY
+            echo "The source code contains security issues." >> $GITHUB_STEP_SUMMARY
+            echo "has_code_vulns=true" >> $GITHUB_OUTPUT
+          else
+            echo "### ✅ Code Scan Passed" >> $GITHUB_STEP_SUMMARY
+            echo "has_code_vulns=false" >> $GITHUB_OUTPUT
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Dependencies scan results
+          if [ "${{ steps.snyk_deps.outcome }}" == "failure" ]; then
+            echo "### ⚠️ Dependency Vulnerabilities Found" >> $GITHUB_STEP_SUMMARY
+            echo "Some dependencies have known vulnerabilities." >> $GITHUB_STEP_SUMMARY
+            echo "has_dep_vulns=true" >> $GITHUB_OUTPUT
+          else
+            echo "### ✅ Dependency Scan Passed" >> $GITHUB_STEP_SUMMARY
+            echo "has_dep_vulns=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Overall status
+          if [ "${{ steps.snyk_container.outcome }}" == "failure" ] || \
+             [ "${{ steps.snyk_code.outcome }}" == "failure" ] || \
+             [ "${{ steps.snyk_deps.outcome }}" == "failure" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "**Action Required:** Please review and fix the security vulnerabilities before merging." >> $GITHUB_STEP_SUMMARY
+            echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "**All security checks passed!** ✅" >> $GITHUB_STEP_SUMMARY
+            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Save scan logs for AI autofix
+      - name: Save Snyk Logs
+        if: always()
+        run: |
+          mkdir -p scan-results
+          
+          # Save container scan output
+          echo "=== Snyk Container Scan ===" > scan-results/snyk_scan.log
+          echo "Outcome: ${{ steps.snyk_container.outcome }}" >> scan-results/snyk_scan.log
+          echo "Conclusion: ${{ steps.snyk_container.conclusion }}" >> scan-results/snyk_scan.log
+          echo "" >> scan-results/snyk_scan.log
+          
+          # Save code scan output
+          echo "=== Snyk Code Scan ===" >> scan-results/snyk_scan.log
+          echo "Outcome: ${{ steps.snyk_code.outcome }}" >> scan-results/snyk_scan.log
+          echo "" >> scan-results/snyk_scan.log
+          
+          # Save dependency scan output
+          echo "=== Snyk Dependency Scan ===" >> scan-results/snyk_scan.log
+          echo "Outcome: ${{ steps.snyk_deps.outcome }}" >> scan-results/snyk_scan.log
+          
+          # Copy any SARIF files
+          cp snyk.sarif scan-results/ 2>/dev/null || true
+
+      - name: Upload Scan Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results-pr-${{ github.event.pull_request.number }}
+          path: scan-results/
+          retention-days: 30
+
+      #########################################
+      # Comment on PR with Results
+      #########################################
+      - name: Comment on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const hasVulns = '${{ steps.snyk_analysis.outputs.has_vulnerabilities }}' === 'true';
+            const hasContainerVulns = '${{ steps.snyk_analysis.outputs.has_container_vulns }}' === 'true';
+            const hasCodeVulns = '${{ steps.snyk_analysis.outputs.has_code_vulns }}' === 'true';
+            const hasDepVulns = '${{ steps.snyk_analysis.outputs.has_dep_vulns }}' === 'true';
+            
+            let body = '## 🔒 Security Scan Report\n\n';
+            
+            if (hasVulns) {
+              body += '⚠️ **Security vulnerabilities were detected in this PR.**\n\n';
+              body += '| Scan Type | Status |\n';
+              body += '|-----------|--------|\n';
+              body += `| Container (Dockerfile) | ${hasContainerVulns ? '⚠️ Issues Found' : '✅ Passed'} |\n`;
+              body += `| Source Code | ${hasCodeVulns ? '⚠️ Issues Found' : '✅ Passed'} |\n`;
+              body += `| Dependencies | ${hasDepVulns ? '⚠️ Issues Found' : '✅ Passed'} |\n`;
+              body += '\n---\n';
+              body += '💡 **Tip:** Run the [AI Autofix workflow](../../actions/workflows/ai-autofix.yml) to automatically fix these issues.\n';
+            } else {
+              body += '✅ **All security checks passed!**\n\n';
+              body += 'No vulnerabilities were detected in the container, source code, or dependencies.';
+            }
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const botComment = comments.find(c => 
+              c.user.type === 'Bot' && 
+              c.body.includes('🔒 Security Scan Report')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
