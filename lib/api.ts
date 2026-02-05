@@ -58,16 +58,16 @@ export async function fetchFlights(bounds?: { lamin: number; lamax: number; lomi
     
     if (!data.states) return [];
     
-    return data.states.slice(0, 50).map((state: any[]) => ({
-      icao24: state[0],
-      callsign: state[1]?.trim() || 'N/A',
-      origin_country: state[2],
-      longitude: state[5],
-      latitude: state[6],
-      altitude: state[7] ? Math.round(state[7]) : null,
-      velocity: state[9] ? Math.round(state[9] * 3.6) : null, // Convert m/s to km/h
-      heading: state[10] ? Math.round(state[10]) : null,
-      on_ground: state[8],
+    return data.states.slice(0, 50).map((state: (string | number | boolean | null)[]) => ({
+      icao24: state[0] as string,
+      callsign: typeof state[1] === 'string' ? state[1].trim() : 'N/A',
+      origin_country: state[2] as string,
+      longitude: state[5] as number | null,
+      latitude: state[6] as number | null,
+      altitude: typeof state[7] === 'number' ? Math.round(state[7]) : null,
+      velocity: typeof state[9] === 'number' ? Math.round(state[9] * 3.6) : null,
+      heading: typeof state[10] === 'number' ? Math.round(state[10]) : null,
+      on_ground: state[8] as boolean,
     }));
   } catch (error) {
     console.error('Error fetching flights:', error);
