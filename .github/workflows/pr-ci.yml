@@ -80,7 +80,11 @@ jobs:
         uses: snyk/actions/docker@master
         with:
           image: ${{ env.DOCKER_IMAGE_TAG }}
-          args: --severity-threshold=medium --file=Dockerfile --policy-path=.snyk
+          args: >-
+            --severity-threshold=medium
+            --file=Dockerfile
+            --policy-path=.snyk
+            --json-file-output=snyk-container.json
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -106,7 +110,10 @@ jobs:
         uses: snyk/actions/node@master
         with:
           command: test
-          args: --severity-threshold=low --policy-path=.snyk
+          args: >-
+            --severity-threshold=low
+            --policy-path=.snyk
+            --json-file-output=snyk-deps.json
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -240,11 +247,9 @@ jobs:
           fi
           echo "" >> scan-results/snyk_scan.log
           
-          # Dependency scan results
-          echo "## Dependency Scan (npm packages)" >> scan-results/snyk_scan.log
-          echo "Status: ${{ steps.snyk_deps.outcome }}" >> scan-results/snyk_scan.log
-          echo "" >> scan-results/snyk_scan.log
-          
+          # Save dependency scan output
+          echo "=== Snyk Dependency Scan ===" >> scan-results/snyk_scan.log
+          echo "Outcome: ${{ steps.snyk_deps.outcome }}" >> scan-results/snyk_scan.log
           if [ -f snyk-deps.json ]; then
             echo "### Vulnerabilities Found:" >> scan-results/snyk_scan.log
             jq -r '
