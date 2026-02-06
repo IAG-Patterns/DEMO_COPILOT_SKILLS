@@ -4,6 +4,10 @@
 # Use current LTS Node.js version with minimal Alpine base
 FROM node:20-alpine
 
+# SECURITY FIX: Upgrade npm to fix vulnerabilities in npm@10.8.2
+# Fixes: tar directory traversal, cross-spawn ReDoS, glob command injection, diff ReDoS
+RUN npm install -g npm@latest
+
 # Set working directory
 WORKDIR /app
 
