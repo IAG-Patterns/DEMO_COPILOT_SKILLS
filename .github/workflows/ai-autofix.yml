@@ -333,6 +333,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || github.token }}
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     
     steps:
       - name: Checkout PR Branch
@@ -372,60 +373,110 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           show_full_output: true
           prompt: |
-            You are an autonomous AI refactoring and security remediation agent.
+            You are an autonomous AI security remediation and refactoring agent.
 
             ## Context
             - Working on PR #${{ needs.prepare.outputs.pr_number }} in ${{ needs.prepare.outputs.owner }}/${{ needs.prepare.outputs.repo }}
             - PR Title: "${{ needs.prepare.outputs.pr_title }}"
             - Security logs available: ${{ needs.prepare.outputs.has_security_logs }}
+            - SNYK_TOKEN is available in environment for running scans
             
             ## Available Files
             - `refactor_tasks.json`: Actionable inline review comments with file paths and line numbers
             - `PR_conversations.json`: Full PR conversation including review summaries
-            - `snyk_scan.log`: **IMPORTANT** - Contains Snyk security scanner results including:
+            - `snyk_scan.log`: **CRITICAL** - Contains Snyk security scanner results including:
               - Container/Dockerfile vulnerabilities
               - Dependency vulnerabilities (npm, pip, etc.)
+              - **License compliance issues** (LGPL, GPL, Artistic, etc.)
               - Code vulnerabilities
-              - SARIF scan results
               - PR check statuses
 
             ## Goals (Priority Order)
             
-            ### 1. Fix Security Vulnerabilities (if snyk_scan.log exists)
-            Read snyk_scan.log carefully and look for:
-            - **Dockerfile issues**: outdated base images, running as root, hardcoded secrets, insecure permissions
-            - **Dependency vulnerabilities**: upgrade vulnerable packages in package.json/requirements.txt
-            - **Code vulnerabilities**: fix any detected security issues in source code
+            ### 1. Fix Security Vulnerabilities
+            Read snyk_scan.log carefully and address ALL issues:
             
-            For Dockerfile fixes:
-            - Update base image to latest secure version (e.g., node:20-alpine instead of node:16)
+            **Dockerfile Security:**
+            - Update base image to latest secure version (e.g., node:22-alpine)
             - Add USER directive to run as non-root
             - Remove hardcoded secrets/credentials
             - Fix file permissions (no 777)
             - Add HEALTHCHECK instruction
             - Remove unnecessary EXPOSE ports
             
-            ### 2. Apply PR Review Comments
-            Read refactor_tasks.json and apply each requested change:
-            - TypeScript type improvements
-            - Code style fixes
-            - Accessibility improvements
-            - Performance optimizations
+            **Dependency Vulnerabilities:**
+            - Upgrade vulnerable packages to patched versions
+            - Check npm/yarn for latest safe versions: `npm view <package> versions --json`
+            - Use `npm audit fix` first, then manual upgrades for breaking changes
+            - For transitive dependencies, try `npm update <package>` or add resolutions/overrides
             
-            ### 3. Verify Changes
-            - Run linting if available (npm run lint)
-            - Run tests if available (npm test)
-            - Ensure the build still works (npm run build)
+            **Code Vulnerabilities:**
+            - Fix injection risks, XSS, path traversal, etc.
+            - Address any SAST findings
+            
+            ### 2. Handle License Compliance Issues
+            Snyk reports license issues like LGPL-3.0, GPL, Artistic-2.0. Handle them:
+            
+            **For LGPL-3.0 (e.g., sharp-libvips):**
+            - These are transitive deps from Next.js image optimization
+            - Option A: Accept (LGPL is permissive for web apps - just requires attribution)
+            - Option B: Disable image optimization in next.config.js: `images: { unoptimized: true }`
+            - Option C: Use alternative package if available
+            
+            **For Artistic-2.0 (e.g., npm):**
+            - This is the npm CLI itself, not a runtime dependency - can be ignored
+            
+            **Create .snyk policy file to document accepted licenses:**
+            ```yaml
+            version: v1.25.0
+            ignore:
+              'snyk:lic:npm:img:sharp-libvips-*:LGPL-3.0':
+                - '*':
+                    reason: 'LGPL-3.0 accepted - transitive dependency from Next.js image optimization'
+                    expires: 2027-01-01T00:00:00.000Z
+            ```
+            
+            ### 3. Iterative Fix Loop with Verification
+            After making fixes, verify and iterate:
+            
+            ```bash
+            # Step 1: Install dependencies
+            npm install --legacy-peer-deps
+            
+            # Step 2: Run local Snyk scan
+            npx snyk test --severity-threshold=medium 2>&1 | tee snyk_local_results.txt
+            
+            # Step 3: Check results
+            if grep -q "found [0-9]* issues" snyk_local_results.txt; then
+              echo "Issues remain - analyzing for additional fixes..."
+              # Read snyk_local_results.txt and apply more fixes
+            fi
+            
+            # Step 4: Repeat up to 3 times or until clean
+            ```
+            
+            ### 4. Apply PR Review Comments
+            Process refactor_tasks.json:
+            - TypeScript type improvements
+            - Code style fixes  
+            - Accessibility improvements
+            - Remove console.log statements
+            - Fix == to === operators
+            
+            ### 5. Final Verification
+            - Run `npm run lint` 
+            - Run `npm run build`
+            - Run final `npx snyk test` to confirm fixes
 
             ## Constraints
-            - Non-interactive environment - no prompts or confirmations
-            - DO NOT create git commits - the workflow handles this
+            - Non-interactive environment - no prompts
+            - DO NOT create git commits - workflow handles this
             - DO NOT use subshells like `bash -c '...'`
-            - Prefer minimal, targeted changes that fix the specific issues
-            - If a file doesn't exist or code has changed, skip that task
+            - Maximum 3 fix iterations to avoid infinite loops
+            - Skip tasks where code no longer exists
 
             ## Output
-            When finished, print a JSON summary:
+            Print JSON summary when finished:
             ```json
             {
               "security_fixes": {
@@ -433,18 +484,28 @@ jobs:
                 "dependencies": ["list of upgrades"],
                 "code": ["list of fixes"]
               },
+              "license_fixes": {
+                "accepted": ["licenses accepted with reason"],
+                "mitigated": ["licenses mitigated by removing/replacing package"],
+                "policy_file_created": boolean
+              },
               "review_fixes": {
                 "applied": number,
                 "skipped": number
               },
-              "tests_passed": boolean
+              "verification": {
+                "iterations": number,
+                "final_snyk_clean": boolean,
+                "lint_passed": boolean,
+                "build_passed": boolean
+              }
             }
             ```
           
           claude_args: |
             --dangerously-skip-permissions
             --allowedTools "Bash" "Edit" "Read" "Write" "LS" "Glob" "Grep"
-            --max-turns 50
+            --max-turns 75
 
       - name: Save Claude Summary
         id: claude_summary
@@ -562,6 +623,7 @@ jobs:
     env:
       WARP_API_KEY: ${{ secrets.WARP_API_KEY }}
       GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || github.token }}
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     
     steps:
       - name: Checkout PR Branch
@@ -601,68 +663,107 @@ jobs:
           warp_api_key: ${{ secrets.WARP_API_KEY }}
           cwd: .
           prompt: |
-            You are an autonomous AI refactoring and security remediation agent running inside a GitHub Actions workflow.
+            You are an autonomous AI security remediation and refactoring agent running inside a GitHub Actions workflow.
 
             ## Context
             - Working on PR #${{ needs.prepare.outputs.pr_number }} in ${{ needs.prepare.outputs.owner }}/${{ needs.prepare.outputs.repo }}
             - PR Title: "${{ needs.prepare.outputs.pr_title }}"
             - Security logs available: ${{ needs.prepare.outputs.has_security_logs }}
+            - SNYK_TOKEN is available in environment for running scans
             
             ## Available Files
             - `refactor_tasks.json`: Actionable inline review comments with file paths and line numbers
             - `PR_conversations.json`: Full PR conversation including review summaries  
             - `snyk_scan.log`: **CRITICAL** - Contains comprehensive Snyk security scanner results:
-              - Workflow run logs with vulnerability details
-              - Container/Dockerfile scan results
+              - Container/Dockerfile vulnerabilities
               - Dependency vulnerability reports
-              - SARIF format scan data
+              - **License compliance issues** (LGPL, GPL, Artistic, etc.)
+              - Code vulnerabilities
               - PR check statuses
-              - Snyk bot comments with fix recommendations
 
             ## Goals (Priority Order)
 
             ### 1. Fix Security Vulnerabilities (PRIORITY)
-            Read snyk_scan.log thoroughly and address ALL security issues found:
+            Read snyk_scan.log thoroughly and address ALL security issues:
             
-            **Dockerfile Security Fixes:**
-            - Update outdated base images (e.g., node:16 → node:20-alpine)
-            - Add `USER node` or similar to avoid running as root
+            **Dockerfile Security:**
+            - Update base image to latest secure version (e.g., node:22-alpine)
+            - Add `USER node` to avoid running as root
             - Remove hardcoded secrets (ENV with passwords, API keys)
             - Fix insecure permissions (no chmod 777)
             - Add HEALTHCHECK instruction
-            - Remove unnecessary EXPOSE ports (keep only required ones)
-            - Don't pipe curl/wget to bash
+            - Remove unnecessary EXPOSE ports
+            - Never pipe curl/wget to bash
             
-            **Dependency Security Fixes:**
-            - Update vulnerable packages in package.json/package-lock.json
-            - Update requirements.txt for Python projects
-            - Use `npm audit fix` or manual version bumps
+            **Dependency Vulnerabilities:**
+            - Upgrade vulnerable packages to patched versions
+            - Check for latest safe versions: `npm view <package> versions --json`
+            - Use `npm audit fix` first, then manual upgrades for breaking changes
+            - For transitive deps, try `npm update <package>` or add overrides in package.json
             
-            **Code Security Fixes:**
-            - Fix any code-level vulnerabilities reported
-            - Address injection risks, XSS, etc.
+            **Code Vulnerabilities:**
+            - Fix injection risks, XSS, path traversal
+            - Address any SAST findings
 
-            ### 2. Apply PR Review Comments
-            Process refactor_tasks.json and PR_conversations.json:
+            ### 2. Handle License Compliance Issues
+            Snyk reports license issues like LGPL-3.0, GPL, Artistic-2.0. Handle them:
+            
+            **For LGPL-3.0 (e.g., @img/sharp-libvips-*):**
+            - These come from Next.js image optimization
+            - Option A: Accept (LGPL is permissive for web apps - requires attribution only)
+            - Option B: Disable image optimization in next.config.js: `images: { unoptimized: true }`
+            
+            **For Artistic-2.0 (e.g., npm):**
+            - This is the npm CLI, not a runtime dep - can be ignored
+            
+            **Create .snyk policy file to document accepted licenses:**
+            ```yaml
+            version: v1.25.0
+            ignore:
+              'snyk:lic:npm:img:sharp-libvips-*:LGPL-3.0':
+                - '*':
+                    reason: 'LGPL-3.0 accepted for Next.js image optimization'
+                    expires: 2027-01-01T00:00:00.000Z
+            ```
+            
+            ### 3. Iterative Fix Loop with Verification
+            After making fixes, verify and iterate up to 3 times:
+            
+            ```bash
+            # Step 1: Install dependencies
+            npm install --legacy-peer-deps
+            
+            # Step 2: Run local Snyk scan
+            npx snyk test --severity-threshold=medium 2>&1 | tee snyk_local_results.txt
+            
+            # Step 3: Check if issues remain
+            if grep -q "found [0-9]* issues" snyk_local_results.txt; then
+              echo "Issues remain - applying more fixes..."
+              # Parse snyk_local_results.txt and fix remaining issues
+            fi
+            
+            # Step 4: Repeat until clean or max 3 iterations
+            ```
+
+            ### 4. Apply PR Review Comments
+            Process refactor_tasks.json:
             - Apply TypeScript improvements
             - Fix code style issues
             - Add accessibility attributes
-            - Performance optimizations
             - Remove console.log statements
-            - Fix equality operators (== → ===)
+            - Fix == to === operators
 
-            ### 3. Verify Changes
-            - Run `npm run lint` if available
-            - Run `npm test` if available
-            - Run `npm run build` to verify compilation
+            ### 5. Final Verification
+            - Run `npm run lint`
+            - Run `npm run build`
+            - Run final `npx snyk test` to confirm fixes
 
             ## Constraints
             - Fully non-interactive environment - no prompts
             - DO NOT create git commits - workflow handles this
             - DO NOT use subshells like `bash -c '...'`
-            - DO NOT amend existing commits
-            - Make minimal, targeted changes
-            - Skip tasks where referenced code no longer exists
+            - Maximum 3 fix iterations to avoid infinite loops
+            - Skip tasks where code no longer exists
 
             ## Required Output
             Print JSON summary when finished:
@@ -673,14 +774,20 @@ jobs:
                 "dependencies": ["list of upgraded packages"],
                 "code": ["list of code fixes"]
               },
+              "license_fixes": {
+                "accepted": ["licenses accepted with reason"],
+                "mitigated": ["licenses mitigated by removing/replacing package"],
+                "policy_file_created": boolean
+              },
               "review_fixes": {
                 "applied": number,
                 "skipped": number,
                 "skipped_reasons": ["reasons"]
               },
               "verification": {
+                "iterations": number,
+                "final_snyk_clean": boolean,
                 "lint_passed": boolean,
-                "tests_passed": boolean,
                 "build_passed": boolean
               }
             }
