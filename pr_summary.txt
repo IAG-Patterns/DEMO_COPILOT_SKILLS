@@ -1,13 +1,11 @@
 ### 📁 Files Modified
-- `Dockerfile`
-- `app/notifications/page.tsx`
-- `components/NotificationCenter.tsx`
 - `next-env.d.ts`
 - `package-lock.json`
 - `package.json`
 - `tsconfig.json`
+- `warp_ai_refactor_summary.json`
 
 ### 📊 Change Statistics
-- **+1191** insertions, **-583** deletions
+- **+1049** insertions, **-1430** deletions
 
 
