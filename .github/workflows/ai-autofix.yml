@@ -398,6 +398,8 @@ jobs:
             
             **Dockerfile Security:**
             - Update base image to latest secure version (e.g., node:22-alpine)
+            - **IMPORTANT**: If Snyk reports npm vulnerabilities (in tar, cross-spawn, glob, etc.), 
+              add `RUN npm install -g npm@latest` AFTER the base image to upgrade npm itself
             - Add USER directive to run as non-root
             - Remove hardcoded secrets/credentials
             - Fix file permissions (no 777)
@@ -406,6 +408,7 @@ jobs:
             
             **Dependency Vulnerabilities:**
             - Upgrade vulnerable packages to patched versions
+            - **Check Snyk output for npm@X.X.X vulnerabilities** - these require upgrading npm in Dockerfile
             - Check npm/yarn for latest safe versions: `npm view <package> versions --json`
             - Use `npm audit fix` first, then manual upgrades for breaking changes
             - For transitive dependencies, try `npm update <package>` or add resolutions/overrides
@@ -688,6 +691,8 @@ jobs:
             
             **Dockerfile Security:**
             - Update base image to latest secure version (e.g., node:22-alpine)
+            - **IMPORTANT**: If Snyk reports npm vulnerabilities (in tar, cross-spawn, glob, diff, etc.), 
+              add `RUN npm install -g npm@latest` AFTER the FROM instruction to upgrade npm itself
             - Add `USER node` to avoid running as root
             - Remove hardcoded secrets (ENV with passwords, API keys)
             - Fix insecure permissions (no chmod 777)
@@ -697,6 +702,7 @@ jobs:
             
             **Dependency Vulnerabilities:**
             - Upgrade vulnerable packages to patched versions
+            - **Check Snyk output for npm@X.X.X vulnerabilities** - these require upgrading npm in Dockerfile
             - Check for latest safe versions: `npm view <package> versions --json`
             - Use `npm audit fix` first, then manual upgrades for breaking changes
             - For transitive deps, try `npm update <package>` or add overrides in package.json
