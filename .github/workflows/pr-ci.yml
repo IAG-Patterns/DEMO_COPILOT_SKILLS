@@ -73,13 +73,14 @@ jobs:
           fi
 
       # Scan Docker image for vulnerabilities
+      # Note: --policy-path honors .snyk file for license ignores
       - name: Snyk Container Scan
         id: snyk_container
         if: steps.check_snyk.outputs.has_token == 'true' && steps.docker_build.outcome == 'success'
         uses: snyk/actions/docker@master
         with:
           image: ${{ env.DOCKER_IMAGE_TAG }}
-          args: --severity-threshold=medium --file=Dockerfile
+          args: --severity-threshold=medium --file=Dockerfile --policy-path=.snyk
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -91,19 +92,21 @@ jobs:
           snyk container test "${{ env.DOCKER_IMAGE_TAG }}" \
             --severity-threshold=medium \
             --file=Dockerfile \
+            --policy-path=.snyk \
             --json > snyk-container.json 2>&1 || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
 
       # Scan dependencies for vulnerabilities  
+      # Note: .snyk policy file is auto-detected in working directory
       - name: Snyk Open Source Scan
         id: snyk_deps
         if: always() && steps.check_snyk.outputs.has_token == 'true'
         uses: snyk/actions/node@master
         with:
           command: test
-          args: --severity-threshold=low
+          args: --severity-threshold=low --policy-path=.snyk
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -112,7 +115,7 @@ jobs:
       - name: Save Dependency Scan JSON
         if: always() && steps.check_snyk.outputs.has_token == 'true'
         run: |
-          snyk test --severity-threshold=low --json > snyk-deps.json 2>&1 || true
+          snyk test --severity-threshold=low --policy-path=.snyk --json > snyk-deps.json 2>&1 || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
