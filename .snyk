@@ -1,0 +1,67 @@
+# Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
+version: v1.25.0
+
+# Ignore license compliance issues
+ignore:
+  # LGPL-3.0 licenses from @img/sharp-libvips-* packages
+  # These are transitive dependencies from Next.js image optimization (next > sharp)
+  # LGPL-3.0 is acceptable for web applications as it only requires:
+  # - Attribution in documentation/license file
+  # - Linking (not embedding) to the library
+  # The sharp library links to libvips dynamically, which satisfies LGPL requirements
+  'snyk:lic:npm:img:sharp-libvips-darwin-arm64:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  'snyk:lic:npm:img:sharp-libvips-darwin-x64:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  'snyk:lic:npm:img:sharp-libvips-linux-arm:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  'snyk:lic:npm:img:sharp-libvips-linux-arm64:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  'snyk:lic:npm:img:sharp-libvips-linux-ppc64:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  'snyk:lic:npm:img:sharp-libvips-linux-riscv64:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  'snyk:lic:npm:img:sharp-libvips-linux-s390x:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  'snyk:lic:npm:img:sharp-libvips-linux-x64:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  'snyk:lic:npm:img:sharp-libvips-linuxmusl-arm64:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  'snyk:lic:npm:img:sharp-libvips-linuxmusl-x64:LGPL-3.0':
+    - '*':
+        reason: 'LGPL-3.0 accepted - Next.js image optimization dependency, used via dynamic linking'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z
+  # Artistic-2.0 license from npm (dev tool, not runtime)
+  'snyk:lic:npm:npm:Artistic-2.0':
+    - '*':
+        reason: 'npm CLI is a development tool, not a runtime dependency - Artistic-2.0 is permissive'
+        expires: 2027-02-06T00:00:00.000Z
+        created: 2026-02-06T12:00:00.000Z

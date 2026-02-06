@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
   pull-requests: write
 
 concurrency:
@@ -44,6 +43,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
+        id: docker_build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -51,13 +51,16 @@ jobs:
           push: false
           load: true
           tags: ${{ env.DOCKER_IMAGE_TAG }}
+        continue-on-error: true
 
       #########################################
       # Security Scanning with Snyk
       #########################################
       
+      # Check Snyk token FIRST (with if: always() to run even if Docker fails)
       - name: Check Snyk Token
         id: check_snyk
+        if: always()
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
@@ -73,10 +76,9 @@ jobs:
       # Note: --policy-path honors .snyk file for license ignores
       - name: Snyk Container Scan
         id: snyk_container
-        if: steps.check_snyk.outputs.has_token == 'true'
+        if: steps.check_snyk.outputs.has_token == 'true' && steps.docker_build.outcome == 'success'
         uses: snyk/actions/docker@master
         with:
-          command: test
           image: ${{ env.DOCKER_IMAGE_TAG }}
           args: >-
             --severity-threshold=medium
@@ -87,11 +89,24 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
 
+      # Save container scan output to JSON
+      - name: Save Container Scan JSON
+        if: always() && steps.check_snyk.outputs.has_token == 'true' && steps.docker_build.outcome == 'success'
+        run: |
+          snyk container test "${{ env.DOCKER_IMAGE_TAG }}" \
+            --severity-threshold=medium \
+            --file=Dockerfile \
+            --policy-path=.snyk \
+            --json > snyk-container.json 2>&1 || true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
       # Scan dependencies for vulnerabilities  
-      # Note: --policy-path honors .snyk file for license ignores
+      # Note: .snyk policy file is auto-detected in working directory
       - name: Snyk Open Source Scan
         id: snyk_deps
-        if: steps.check_snyk.outputs.has_token == 'true'
+        if: always() && steps.check_snyk.outputs.has_token == 'true'
         uses: snyk/actions/node@master
         with:
           command: test
@@ -99,6 +114,15 @@ jobs:
             --severity-threshold=low
             --policy-path=.snyk
             --json-file-output=snyk-deps.json
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      # Save dependency scan output to JSON
+      - name: Save Dependency Scan JSON
+        if: always() && steps.check_snyk.outputs.has_token == 'true'
+        run: |
+          snyk test --severity-threshold=low --policy-path=.snyk --json > snyk-deps.json 2>&1 || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -114,6 +138,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           HAS_TOKEN="${{ steps.check_snyk.outputs.has_token }}"
+          DOCKER_BUILD="${{ steps.docker_build.outcome }}"
           
           if [ "$HAS_TOKEN" != "true" ]; then
             echo "### ⚠️ Snyk Token Not Configured" >> $GITHUB_STEP_SUMMARY
@@ -131,13 +156,22 @@ jobs:
           
           echo "snyk_skipped=false" >> $GITHUB_OUTPUT
           
+          # Docker build status
+          if [ "$DOCKER_BUILD" != "success" ]; then
+            echo "### ⚠️ Docker Build Failed" >> $GITHUB_STEP_SUMMARY
+            echo "Container scan was skipped because Docker image build failed." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           # Container scan results
-          if [ "${{ steps.snyk_container.outcome }}" == "failure" ]; then
-            echo "### ⚠️ Container Vulnerabilities Found" >> $GITHUB_STEP_SUMMARY
+          if [ "$DOCKER_BUILD" == "success" ] && [ "${{ steps.snyk_container.outcome }}" == "failure" ]; then
+            echo "### 🚨 Container Vulnerabilities Found" >> $GITHUB_STEP_SUMMARY
             echo "The Docker image contains security vulnerabilities." >> $GITHUB_STEP_SUMMARY
             echo "has_container_vulns=true" >> $GITHUB_OUTPUT
           else
-            echo "### ✅ Container Scan Passed" >> $GITHUB_STEP_SUMMARY
+            if [ "$DOCKER_BUILD" == "success" ]; then
+              echo "### ✅ Container Scan Passed" >> $GITHUB_STEP_SUMMARY
+            fi
             echo "has_container_vulns=false" >> $GITHUB_OUTPUT
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -177,16 +211,39 @@ jobs:
             exit 0
           fi
           
-          # Save container scan output
-          echo "=== Snyk Container Scan ===" > scan-results/snyk_scan.log
-          echo "Outcome: ${{ steps.snyk_container.outcome }}" >> scan-results/snyk_scan.log
-          echo "Conclusion: ${{ steps.snyk_container.conclusion }}" >> scan-results/snyk_scan.log
+          # Create comprehensive log file
+          echo "# Snyk Security Scan Results" > scan-results/snyk_scan.log
+          echo "# PR: #${{ github.event.pull_request.number }}" >> scan-results/snyk_scan.log
+          echo "# Commit: ${{ github.sha }}" >> scan-results/snyk_scan.log
+          echo "# Scanned: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> scan-results/snyk_scan.log
+          echo "" >> scan-results/snyk_scan.log
           
-          # Include JSON results if available
+          # Container scan results
+          echo "## Container Scan (Dockerfile)" >> scan-results/snyk_scan.log
+          echo "Status: ${{ steps.snyk_container.outcome }}" >> scan-results/snyk_scan.log
+          echo "" >> scan-results/snyk_scan.log
+          
           if [ -f snyk-container.json ]; then
+            echo "### Vulnerabilities Found:" >> scan-results/snyk_scan.log
+            # Extract vulnerability summary from JSON
+            jq -r '
+              if type == "object" and has("vulnerabilities") then
+                .vulnerabilities | group_by(.severity) | map({
+                  severity: .[0].severity,
+                  count: length,
+                  items: [.[] | {name: .name, version: .version, title: .title, fixedIn: .fixedIn[0]}][:5]
+                }) | .[] | 
+                "#### \(.severity | ascii_upcase) (\(.count) found):\n" +
+                (.items | map("- \(.name)@\(.version): \(.title)" + if .fixedIn then " (fix: \(.fixedIn))" else "" end) | join("\n"))
+              else
+                "No vulnerabilities data available"
+              end
+            ' snyk-container.json >> scan-results/snyk_scan.log 2>/dev/null || echo "Could not parse container scan results" >> scan-results/snyk_scan.log
             echo "" >> scan-results/snyk_scan.log
-            echo "Container Scan Details:" >> scan-results/snyk_scan.log
+            echo "### Full Container Scan JSON:" >> scan-results/snyk_scan.log
             cat snyk-container.json >> scan-results/snyk_scan.log
+          else
+            echo "No container scan results available" >> scan-results/snyk_scan.log
           fi
           echo "" >> scan-results/snyk_scan.log
           
@@ -194,10 +251,31 @@ jobs:
           echo "=== Snyk Dependency Scan ===" >> scan-results/snyk_scan.log
           echo "Outcome: ${{ steps.snyk_deps.outcome }}" >> scan-results/snyk_scan.log
           if [ -f snyk-deps.json ]; then
+            echo "### Vulnerabilities Found:" >> scan-results/snyk_scan.log
+            jq -r '
+              if type == "object" and has("vulnerabilities") then
+                .vulnerabilities | group_by(.severity) | map({
+                  severity: .[0].severity,
+                  count: length,
+                  items: [.[] | {name: .name, version: .version, title: .title, fixedIn: .fixedIn[0]}][:5]
+                }) | .[] | 
+                "#### \(.severity | ascii_upcase) (\(.count) found):\n" +
+                (.items | map("- \(.name)@\(.version): \(.title)" + if .fixedIn then " (fix: \(.fixedIn))" else "" end) | join("\n"))
+              else
+                "No vulnerabilities data available"
+              end
+            ' snyk-deps.json >> scan-results/snyk_scan.log 2>/dev/null || echo "Could not parse dependency scan results" >> scan-results/snyk_scan.log
             echo "" >> scan-results/snyk_scan.log
-            echo "Dependency Scan Details:" >> scan-results/snyk_scan.log
+            echo "### Full Dependency Scan JSON:" >> scan-results/snyk_scan.log
             cat snyk-deps.json >> scan-results/snyk_scan.log
+          else
+            echo "No dependency scan results available" >> scan-results/snyk_scan.log
           fi
+          
+          # Show summary
+          echo ""
+          echo "📊 Scan log created: $(wc -c < scan-results/snyk_scan.log) bytes"
+          head -30 scan-results/snyk_scan.log
 
       - name: Upload Scan Results
         if: always()
@@ -219,6 +297,7 @@ jobs:
             const hasVulns = '${{ steps.snyk_analysis.outputs.has_vulnerabilities }}' === 'true';
             const hasContainerVulns = '${{ steps.snyk_analysis.outputs.has_container_vulns }}' === 'true';
             const hasDepVulns = '${{ steps.snyk_analysis.outputs.has_dep_vulns }}' === 'true';
+            const dockerBuildFailed = '${{ steps.docker_build.outcome }}' !== 'success';
             
             let body = '## 🔒 Security Scan Report\n\n';
             
@@ -232,7 +311,11 @@ jobs:
               body += '⚠️ **Security vulnerabilities were detected in this PR.**\n\n';
               body += '| Scan Type | Status |\n';
               body += '|-----------|--------|\n';
-              body += `| Container (Dockerfile) | ${hasContainerVulns ? '⚠️ Issues Found' : '✅ Passed'} |\n`;
+              if (dockerBuildFailed) {
+                body += '| Container (Dockerfile) | ⏭️ Skipped (build failed) |\n';
+              } else {
+                body += `| Container (Dockerfile) | ${hasContainerVulns ? '🚨 Issues Found' : '✅ Passed'} |\n`;
+              }
               body += `| Dependencies | ${hasDepVulns ? '⚠️ Issues Found' : '✅ Passed'} |\n`;
               body += '\n---\n';
               body += '💡 **Tip:** Run the [AI Autofix workflow](../../actions/workflows/ai-autofix.yml) to automatically fix these issues.\n';
@@ -268,3 +351,20 @@ jobs:
                 body: body
               });
             }
+
+      #########################################
+      # Fail CI if vulnerabilities found
+      #########################################
+      - name: Fail if vulnerabilities found
+        if: always()
+        run: |
+          if [ "${{ steps.snyk_analysis.outputs.has_vulnerabilities }}" == "true" ]; then
+            echo "❌ Security vulnerabilities were detected!"
+            echo ""
+            echo "Container vulnerabilities: ${{ steps.snyk_analysis.outputs.has_container_vulns }}"
+            echo "Dependency vulnerabilities: ${{ steps.snyk_analysis.outputs.has_dep_vulns }}"
+            echo ""
+            echo "Please fix the vulnerabilities or run the AI Autofix workflow."
+            exit 1
+          fi
+          echo "✅ No security vulnerabilities detected"
